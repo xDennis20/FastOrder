@@ -1,0 +1,23 @@
+# Entorno virtual de Python
+.venv/
+
+# Caché de Python
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Variables de entorno
+.env
+
+# Base de datos local
+*.db
+*.sqlite3
+
+# IDEs y Editores
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
