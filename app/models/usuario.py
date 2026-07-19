@@ -1,5 +1,4 @@
-from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
@@ -15,7 +14,13 @@ class Usuario(SQLModel, table=True):
     correo: str = Field(nullable=False, unique=True, max_length=200, index=True)
 
     rol_id: int | None = Field(default=None, foreign_key="rol.id")
+    restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")
 
-    rol: Rol | None = Relationship(back_populates="usuarios")
-    pedidos: list[Pedido] = Relationship(back_populates="mesero")
-    restaurante: Restaurante | None = Relationship(back_populates="usuarios")
+    rol: Optional[Rol] = Relationship(back_populates="usuarios")
+    pedidos: list["Pedido"] = Relationship(back_populates="mesero")
+    restaurante: Optional[Restaurante] = Relationship(back_populates="usuarios")
+
+from app.models.rol import Rol
+from app.models.pedido import Pedido
+from app.models.restaurante import Restaurante
+Usuario.model_rebuild()

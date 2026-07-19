@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import TYPE_CHECKING
 from datetime import datetime, UTC
 from pydantic import field_validator
@@ -20,11 +19,11 @@ class Restaurante(SQLModel, table=True):
 
     fecha_registro: datetime = Field(default_factory=lambda: datetime.now(UTC), nullable=False)
 
-    usuarios: list[Usuario] = Relationship(back_populates="restaurante")
-    mesas: list[Mesa] = Relationship(back_populates="restaurante")
-    platos: list[Plato] = Relationship(back_populates="restaurante")
-    categorias: list[Categoria] = Relationship(back_populates="restaurante")
-    pedidos: list[Pedido] = Relationship(back_populates="restaurante")
+    usuarios: list["Usuario"] = Relationship(back_populates="restaurante")
+    mesas: list["Mesa"] = Relationship(back_populates="restaurante")
+    platos: list["Plato"] = Relationship(back_populates="restaurante")
+    categorias: list["Categoria"] = Relationship(back_populates="restaurante")
+    pedidos: list["Pedido"] = Relationship(back_populates="restaurante")
 
 class RestauranteBase(SQLModel):
     nombre: str = Field(nullable=False, max_length=100)
@@ -43,3 +42,10 @@ class RestauranteCreate(RestauranteBase):
 class RestauranteRead(RestauranteBase):
     id: int
     fecha_registro: datetime
+
+from app.models.usuario import Usuario
+from app.models.mesa import Mesa
+from app.models.plato import Plato
+from app.models.categoria import Categoria
+from app.models.pedido import Pedido
+Restaurante.model_rebuild()

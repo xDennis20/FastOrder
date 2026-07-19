@@ -1,7 +1,5 @@
-from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from decimal import Decimal
-
 from pydantic import field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -19,10 +17,11 @@ class Plato(SQLModel, table=True):
     img_url: str | None = Field(default=None)
 
     categoria_id: int | None = Field(default=None, foreign_key="categoria.id")
+    restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")
 
-    categoria: Categoria | None = Relationship(back_populates="platos")
-    detalles_pedido: list[DetallePedido] = Relationship(back_populates="plato")
-    restaurante: Restaurante | None = Relationship(back_populates="platos")
+    categoria: Optional["Categoria"] = Relationship(back_populates="platos")
+    detalles_pedido: list["DetallePedido"] = Relationship(back_populates="plato")
+    restaurante: Optional["Restaurante"] = Relationship(back_populates="platos")
 
 class PlatoBase(SQLModel):
     nombre: str = Field(max_length=120)
@@ -31,6 +30,7 @@ class PlatoBase(SQLModel):
     descripcion: str | None = Field(default=None, max_length=150)
     img_url: str | None = Field(default=None)
     categoria_id: int | None = Field(default=None)
+    restaurante_id: int | None = Field(default=None)
 
 class PlatoCreate(PlatoBase):
     @field_validator("tamano")
@@ -46,3 +46,8 @@ class PlatoCreate(PlatoBase):
 
 class PlatoRead(PlatoBase):
     id: int
+
+from app.models.categoria import Categoria
+from app.models.pedido import DetallePedido
+from app.models.restaurante import Restaurante
+Plato.model_rebuild()
