@@ -12,6 +12,7 @@ class Usuario(SQLModel, table=True):
     apellidos: str = Field(nullable=False)
     telefono: str = Field(nullable=False, unique=True, max_length=10, index=True)
     correo: str = Field(nullable=False, unique=True, max_length=200, index=True)
+    hashed_password: str = Field(nullable=False)
 
     rol_id: int | None = Field(default=None, foreign_key="rol.id")
     restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")
