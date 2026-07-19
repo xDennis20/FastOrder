@@ -5,7 +5,9 @@ from sqlmodel import Session, select
 
 
 def verificar_restaurante(id_restaurante: int, db: Session = Depends(get_session)) -> Restaurante:
-    categoria_obj = db.execute(select(Restaurante).where(Restaurante.id == id_restaurante)).scalar_one_or_none()
-    if not categoria_obj:
+    if id_restaurante is None:
+        return None
+    restaurante_obj = db.exec(select(Restaurante).where(Restaurante.id == id_restaurante)).first()
+    if not restaurante_obj:
         raise HTTPException(status_code=404, detail="Restaurante no encontrado")
-    return categoria_obj
+    return restaurante_obj

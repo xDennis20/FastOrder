@@ -7,7 +7,7 @@ from app.models.categoria import Categoria, CategoriaCreate, CategoriaRead, Cate
 
 router = APIRouter(prefix="/categorias", tags=["categorias"])
 
-@router.post("", response_model=CategoriaRead)
+@router.post("/", response_model=CategoriaRead)
 def crear_categoria(categoria_in: CategoriaCreate, db: Session = Depends(get_session)):
     restaurante_obj = verificar_restaurante(categoria_in.restaurante_id, db)
     try:

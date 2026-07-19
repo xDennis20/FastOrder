@@ -6,7 +6,7 @@ from app.models.restaurante import Restaurante, RestauranteCreate, RestauranteRe
 
 router = APIRouter(prefix="/restaurantes", tags=["restaurantes"])
 
-@router.post("", response_model=RestauranteRead, response_description="Restaurante Creado Correctamente", status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RestauranteRead, response_description="Restaurante Creado Correctamente", status_code=status.HTTP_201_CREATED)
 def crear_restaurante(restaurante_in: RestauranteCreate, db: Session = Depends(get_session)):
     try:
         restaurante_nuevo = Restaurante.model_validate(restaurante_in)
