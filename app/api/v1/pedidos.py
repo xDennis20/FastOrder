@@ -23,7 +23,6 @@ def crear_pedido(
         db: Session = Depends(get_session),
         current_user: dict = Depends(get_current_user)
 ):
-    # Validar que el pedido no venga vacío
     if not pedido_in.detalles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
