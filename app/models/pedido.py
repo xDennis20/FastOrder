@@ -36,6 +36,15 @@ class DetallePedido(SQLModel, table=True):
     pedido: Optional["Pedido"] = Relationship(back_populates="detalles")
     plato: Optional["Plato"] = Relationship(back_populates="detalles_pedido")
 
+class DetallePedidoCreate(SQLModel):
+    plato_id: int
+    cantidad: int = 1
+    notas: str | None = None
+
+class PedidoCreate(SQLModel):
+    mesa_id: int
+    detalles: list[DetallePedidoCreate]
+
 from app.models.usuario import Usuario
 from app.models.plato import Plato
 from app.models.factura import Factura
