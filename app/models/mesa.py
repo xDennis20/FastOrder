@@ -1,4 +1,6 @@
 from typing import TYPE_CHECKING, Optional
+from enum import Enum
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
@@ -7,7 +9,7 @@ if TYPE_CHECKING:
 
 class Mesa(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
-    numero_mesa: str = Field(nullable=False, unique=True)
+    numero_mesa: str = Field(nullable=False)
     estado: str = Field(default="Disponible", max_length=50)
 
     mesa_principal_id: int | None = Field(default=None, foreign_key="mesa.id",nullable=True)
@@ -21,6 +23,27 @@ class Mesa(SQLModel, table=True):
     mesas_unidas: list["Mesa"] = Relationship(back_populates="mesa_principal")
     pedidos: list["Pedido"] = Relationship(back_populates="mesa")
     restaurante: Optional["Restaurante"] = Relationship(back_populates="mesas")
+
+    __table_args__ = (
+        UniqueConstraint("restaurante_id", "numero_mesa", name="uq_mesas_restaurante"),
+    )
+
+class EstadosValidos(str,Enum):
+    disponible = "Disponible"
+    ocupado = "Ocupada"
+
+class MesaBase(SQLModel):
+    numero_mesa: str = Field(max_length=3)
+    estado: EstadosValidos = EstadosValidos.disponible
+    mesa_principal_id: int | None = Field(default=None)
+
+class MesaCreate(MesaBase):
+    pass
+
+class MesaRead(MesaBase):
+    id: int
+    restaurante_id: int
+
 
 from app.models.pedido import Pedido
 from app.models.restaurante import Restaurante
