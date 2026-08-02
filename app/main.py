@@ -7,6 +7,7 @@ from app.api.v1.restaurantes import router as router_restaurante
 from app.api.v1.auth.router import router as router_auth
 from app.api.v1.usuarios import router as router_usuario
 from app.api.v1.pedidos import router as router_pedido
+from app.api.v1.mesas import router as router_mesa
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(router=router_auth)
     app.include_router(router=router_usuario)
     app.include_router(router=router_pedido)
+    app.include_router(router=router_mesa)
 
     return app
 

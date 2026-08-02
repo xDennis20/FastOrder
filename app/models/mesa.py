@@ -37,6 +37,9 @@ class MesaBase(SQLModel):
     estado: EstadosValidos = EstadosValidos.disponible
     mesa_principal_id: int | None = Field(default=None)
 
+class MesaVincular(SQLModel):
+    mesa_principal_id: int | None = Field(default=None)
+
 class MesaCreate(MesaBase):
     pass
 
