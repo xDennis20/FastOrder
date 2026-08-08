@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlmodel import select, Session, update
+from sqlmodel import select, Session
 from app.models.mesa import MesaCreate, MesaRead, Mesa, MesaVincular
 from app.api.deps import get_current_user, get_session
 
@@ -70,3 +70,22 @@ def obtener_mesas(current_user: dict = Depends(get_current_user), db: Session = 
     consulta = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"))
     mesas_items = db.exec(consulta).all()
     return mesas_items
+
+@router.delete("/{mesa_id}", status_code=status.HTTP_200_OK)
+def eliminar_mesa(mesa_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)) -> dict:
+    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"), Mesa.id == mesa_id)
+    mesa: Mesa | None = db.exec(consulta).first()
+    if mesa is None:
+        raise HTTPException(status_code=404, detail="Mesa a eliminar no existe")
+    try:
+        numero = mesa.numero_mesa
+        db.delete(mesa)
+        db.commit()
+        return {"detail": f"Mesa {numero} eliminada correctamente"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="No se puede eliminar mesas principales")
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno en la base de datos")
+
