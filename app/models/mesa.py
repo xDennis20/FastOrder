@@ -31,6 +31,8 @@ class Mesa(SQLModel, table=True):
 class EstadosValidos(str,Enum):
     disponible = "Disponible"
     ocupado = "Ocupada"
+    reservada = "Reservada"
+    mantenimiento = "Mantenimiento / Fuera de servicio"
 
 class MesaBase(SQLModel):
     numero_mesa: str = Field(max_length=3)
@@ -39,6 +41,9 @@ class MesaBase(SQLModel):
 
 class MesaVincular(SQLModel):
     mesa_principal_id: int | None = Field(default=None)
+
+class MesaEstadoUpdate(SQLModel):
+    estado: EstadosValidos
 
 class MesaCreate(MesaBase):
     pass
