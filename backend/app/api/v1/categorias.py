@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
-from backend.app.api.deps import get_session
-from backend.app.service.restaurante import verificar_restaurante
-from backend.app.models.categoria import Categoria, CategoriaCreate, CategoriaRead, CategoriaWithPlatos
+from app.api.deps import get_session
+from app.service.restaurante import verificar_restaurante
+from app.models.categoria import Categoria, CategoriaCreate, CategoriaRead, CategoriaWithPlatos
 
 router = APIRouter(prefix="/categorias", tags=["categorias"])
 

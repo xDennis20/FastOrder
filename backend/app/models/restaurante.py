@@ -4,11 +4,11 @@ from pydantic import field_validator
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
-    from backend.app.models.usuario import Usuario
-    from backend.app.models.mesa import Mesa
-    from backend.app.models.plato import Plato
-    from backend.app.models.categoria import Categoria
-    from backend.app.models.pedido import Pedido
+    from app.models.usuario import Usuario
+    from app.models.mesa import Mesa
+    from app.models.plato import Plato
+    from app.models.categoria import Categoria
+    from app.models.pedido import Pedido
 
 class Restaurante(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -43,9 +43,9 @@ class RestauranteRead(RestauranteBase):
     id: int
     fecha_registro: datetime
 
-from backend.app.models.usuario import Usuario
-from backend.app.models.mesa import Mesa
-from backend.app.models.plato import Plato
-from backend.app.models.categoria import Categoria
-from backend.app.models.pedido import Pedido
+from app.models.usuario import Usuario
+from app.models.mesa import Mesa
+from app.models.plato import Plato
+from app.models.categoria import Categoria
+from app.models.pedido import Pedido
 Restaurante.model_rebuild()

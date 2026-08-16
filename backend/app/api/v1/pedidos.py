@@ -2,9 +2,9 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlmodel import Session
 from sqlalchemy.exc import SQLAlchemyError
-from backend.app.core.database import get_session
-from backend.app.api.deps import get_current_user
-from backend.app.models.pedido import Pedido, DetallePedido, PedidoCreate
+from app.core.database import get_session
+from app.api.deps import get_current_user
+from app.models.pedido import Pedido, DetallePedido, PedidoCreate
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
