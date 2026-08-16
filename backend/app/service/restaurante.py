@@ -1,5 +1,5 @@
-from app.models.restaurante import Restaurante
-from app.core.database import get_session
+from backend.app.models.restaurante import Restaurante
+from backend.app.core.database import get_session
 from fastapi import Depends, HTTPException
 from sqlmodel import Session, select
 

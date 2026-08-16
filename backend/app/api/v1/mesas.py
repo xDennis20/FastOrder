@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlmodel import select, Session
-from app.models.mesa import MesaCreate, MesaRead, Mesa, MesaVincular, EstadosValidos, MesaEstadoUpdate
-from app.api.deps import get_current_user, get_session
-from app.models.pedido import Pedido
+from backend.app.models.mesa import MesaCreate, MesaRead, Mesa, MesaVincular, EstadosValidos, MesaEstadoUpdate
+from backend.app.api.deps import get_current_user, get_session
+from backend.app.models.pedido import Pedido
 
 router = APIRouter(prefix="/mesas", tags=["mesas"])
 

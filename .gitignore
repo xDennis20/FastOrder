@@ -8,7 +8,7 @@
 *.pyd
 
 # Variables de entorno
-.env
+backend/.env
 
 # Base de datos local
 *.db

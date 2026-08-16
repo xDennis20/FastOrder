@@ -1,5 +1,5 @@
-from app.models.rol import Rol
-from app.core.database import get_session
+from backend.app.models.rol import Rol
+from backend.app.core.database import get_session
 from fastapi import Depends, HTTPException
 from sqlmodel import Session, select
 

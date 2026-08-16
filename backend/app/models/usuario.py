@@ -2,9 +2,9 @@ from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
-    from app.models.rol import Rol
-    from app.models.pedido import Pedido
-    from app.models.restaurante import Restaurante
+    from backend.app.models.rol import Rol
+    from backend.app.models.pedido import Pedido
+    from backend.app.models.restaurante import Restaurante
 
 
 class UsuarioBase(SQLModel):
@@ -29,7 +29,7 @@ class Usuario(UsuarioBase, table=True):
     pedidos: list["Pedido"] = Relationship(back_populates="mesero")
     restaurante: Optional["Restaurante"] = Relationship(back_populates="usuarios")
 
-from app.models.rol import Rol
-from app.models.pedido import Pedido
-from app.models.restaurante import Restaurante
+from backend.app.models.rol import Rol
+from backend.app.models.pedido import Pedido
+from backend.app.models.restaurante import Restaurante
 Usuario.model_rebuild()

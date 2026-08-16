@@ -4,9 +4,9 @@ from pydantic import field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
-    from app.models.categoria import Categoria
-    from app.models.pedido import DetallePedido
-    from app.models.restaurante import Restaurante
+    from backend.app.models.categoria import Categoria
+    from backend.app.models.pedido import DetallePedido
+    from backend.app.models.restaurante import Restaurante
 
 class Plato(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -47,7 +47,7 @@ class PlatoCreate(PlatoBase):
 class PlatoRead(PlatoBase):
     id: int
 
-from app.models.categoria import Categoria
-from app.models.pedido import DetallePedido
-from app.models.restaurante import Restaurante
+from backend.app.models.categoria import Categoria
+from backend.app.models.pedido import DetallePedido
+from backend.app.models.restaurante import Restaurante
 Plato.model_rebuild()

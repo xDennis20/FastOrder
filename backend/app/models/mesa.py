@@ -4,8 +4,8 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
-    from app.models.pedido import Pedido
-    from app.models.restaurante import Restaurante
+    from backend.app.models.pedido import Pedido
+    from backend.app.models.restaurante import Restaurante
 
 class Mesa(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -53,6 +53,6 @@ class MesaRead(MesaBase):
     restaurante_id: int
 
 
-from app.models.pedido import Pedido
-from app.models.restaurante import Restaurante
+from backend.app.models.pedido import Pedido
+from backend.app.models.restaurante import Restaurante
 Mesa.model_rebuild()

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from sqlalchemy.exc import SQLAlchemyError
-from app.api.deps import get_session
-from app.models.restaurante import Restaurante, RestauranteCreate, RestauranteRead
+from backend.app.api.deps import get_session
+from backend.app.models.restaurante import Restaurante, RestauranteCreate, RestauranteRead
 
 router = APIRouter(prefix="/restaurantes", tags=["restaurantes"])
 

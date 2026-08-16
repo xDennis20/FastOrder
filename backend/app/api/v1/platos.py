@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from sqlalchemy.exc import SQLAlchemyError
-from app.models.plato import PlatoCreate, Plato, PlatoRead
-from app.service.categoria import verificar_categoria
-from app.models.usuario import Usuario
-from app.api.deps import get_session
-from app.api.deps import get_current_user
+from backend.app.models.plato import PlatoCreate, Plato, PlatoRead
+from backend.app.service.categoria import verificar_categoria
+from backend.app.models.usuario import Usuario
+from backend.app.api.deps import get_session
+from backend.app.api.deps import get_current_user
 
 router = APIRouter(prefix="/platos", tags=["platos"])
 

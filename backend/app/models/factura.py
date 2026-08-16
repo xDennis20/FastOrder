@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
-    from app.models.pedido import Pedido
+    from backend.app.models.pedido import Pedido
 
 class Factura(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -14,5 +14,5 @@ class Factura(SQLModel, table=True):
 
     pedido: Optional["Pedido"] = Relationship(back_populates="factura")
 
-from app.models.pedido import Pedido
+from backend.app.models.pedido import Pedido
 Factura.model_rebuild()

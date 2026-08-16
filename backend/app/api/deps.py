@@ -1,7 +1,6 @@
 import os
 import jwt
 from datetime import timedelta, datetime, UTC
-from app.core.database import get_session
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer

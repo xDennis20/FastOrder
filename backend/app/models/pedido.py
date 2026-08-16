@@ -3,11 +3,11 @@ from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime, UTC
 
 if TYPE_CHECKING:
-    from app.models.usuario import Usuario
-    from app.models.plato import Plato
-    from app.models.factura import Factura
-    from app.models.mesa import Mesa
-    from app.models.restaurante import Restaurante
+    from backend.app.models.usuario import Usuario
+    from backend.app.models.plato import Plato
+    from backend.app.models.factura import Factura
+    from backend.app.models.mesa import Mesa
+    from backend.app.models.restaurante import Restaurante
 
 class Pedido(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -45,9 +45,9 @@ class PedidoCreate(SQLModel):
     mesa_id: int
     detalles: list[DetallePedidoCreate]
 
-from app.models.usuario import Usuario
-from app.models.plato import Plato
-from app.models.factura import Factura
-from app.models.mesa import Mesa
-from app.models.restaurante import Restaurante
+from backend.app.models.usuario import Usuario
+from backend.app.models.plato import Plato
+from backend.app.models.factura import Factura
+from backend.app.models.mesa import Mesa
+from backend.app.models.restaurante import Restaurante
 Pedido.model_rebuild()

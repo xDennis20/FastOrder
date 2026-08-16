@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 import bcrypt
 from sqlalchemy.exc import SQLAlchemyError
-from app.api.deps import get_session
-from app.models.usuario import UsuarioRead, UsuarioCreate, Usuario
-from app.service.restaurante import verificar_restaurante
-from app.service.rol import verificar_rol
+from backend.app.api.deps import get_session
+from backend.app.models.usuario import UsuarioRead, UsuarioCreate, Usuario
+from backend.app.service.restaurante import verificar_restaurante
+from backend.app.service.rol import verificar_rol
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 
