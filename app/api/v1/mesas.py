@@ -1,5 +1,3 @@
-from http.cookiejar import cut_port_re
-
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlmodel import select, Session
@@ -35,7 +33,7 @@ def crear_mesa(mesa_in: MesaCreate, current_user: dict = Depends(get_current_use
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al guardar la base de datos")
 
-@router.patch("/{mesa_id}/vincular",response_model=MesaRead, response_description="Mesa actualizado correctamente")
+@router.patch("/{mesa_id}/vincular",response_model=MesaRead, response_description="Mesa actualizado correctamente", status_code=status.HTTP_200_OK)
 def vincular_mesas(mesa_id: int,
                mesa_principal: MesaVincular,
                db: Session = Depends(get_session),
@@ -56,6 +54,14 @@ def vincular_mesas(mesa_id: int,
         mesa_principal_obj = db.exec(consulta_mesa_principal).first()
         if mesa_principal_obj is None:
             raise HTTPException(status_code=404, detail="Mesa a vincular no encontrada")
+        consulta_mesas_dependientes = select(Mesa).where(Mesa.restaurante_id == restaurante_id,
+                                                         Mesa.mesa_principal_id == mesa_id)
+        mesa_dependientes = db.exec(consulta_mesas_dependientes).first()
+        if mesa_dependientes is not None:
+            raise HTTPException(status_code=400,
+                                detail="Esta mesa ya tiene mesas secundarias vinculadas. Desvincula las mesas asociadas antes de moverla.")
+        if mesa_principal_obj.mesa_principal_id is not None:
+            raise HTTPException(status_code=400, detail="No se puede vincular a una mesa que ya es secundaria. Debes vincularla a la mesa principal raíz")
 
     try:
         mesa_modificar.mesa_principal_id = mesa_principal_id
@@ -68,11 +74,34 @@ def vincular_mesas(mesa_id: int,
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al modificar el objeto en la base de datos")
 
-@router.patch("/{mesa_id}/estado", response_description="Cambio de estado de la mesa exitoso")
+@router.patch("/{mesa_id}/estado", response_model=MesaRead, response_description="Cambio de estado de la mesa exitoso", status_code=status.HTTP_200_OK)
 def mesa_cambiar_estado(mesa_id: int, estado: MesaEstadoUpdate,current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
     consulta_mesa = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"), Mesa.id == mesa_id)
-    consulta_pedidos_activos = select(Pedido).where(Pedido.restaurante_id == current_user.get("restaurante_id", Pedido.mesa_id == mesa_id, Pedido.estado.in_(["Pendiente", "En preparación", "Entregado"])))
+    mesa = db.exec(consulta_mesa).first()
 
+    if mesa is None:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+
+    if estado.estado == EstadosValidos.disponible:
+        consulta_pedidos_activos = select(Pedido).where(Pedido.restaurante_id == current_user.get("restaurante_id"),
+                                                        Pedido.mesa_id == mesa_id,
+                                                        Pedido.estado.in_(["Pendiente", "En preparación", "Entregado"]))
+        pedido_activo = db.exec(consulta_pedidos_activos).first()
+
+        if pedido_activo is not None:
+            raise HTTPException(status_code=400,
+                                detail="No se puede cambiar la mesa a Disponible por que tiene pedidos activos")
+
+    try:
+        mesa.estado = estado.estado
+        db.add(mesa)
+        db.commit()
+        db.refresh(mesa)
+
+        return mesa
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno al modificar el objeto en la base de datos")
 
 @router.get("/", response_model=list[MesaRead])
 def obtener_mesas(current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
@@ -105,4 +134,3 @@ def eliminar_mesa(mesa_id: int, current_user: dict = Depends(get_current_user), 
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno en la base de datos")
-
