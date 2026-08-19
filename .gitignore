@@ -9,7 +9,6 @@
 
 # Variables de entorno
 backend/.env
-mobile/.env
 
 # Base de datos local
 *.db
