@@ -44,8 +44,9 @@ class PlatoCreate(PlatoBase):
 
         return value_sanitado
 
-class PlatoRead(PlatoBase):
-    id: int
+class PlatoRead(SQLModel):
+    id: int | None
+    nombre: str
 
 from app.models.categoria import Categoria
 from app.models.pedido import DetallePedido
