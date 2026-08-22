@@ -1,10 +1,13 @@
+import datetime
+import math
 import time
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlmodel import Session
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import get_session
 from app.api.deps import get_current_user
-from app.models.pedido import Pedido, DetallePedido, PedidoCreate
+from app.models.pedido import Pedido, DetallePedido, PedidoCreate, PedidoPagination, EstadosValidosPedidos
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
@@ -69,3 +72,48 @@ def crear_pedido(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al registrar el pedido en la base de datos."
         )
+
+@router.get("", response_model=PedidoPagination)
+def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=None, description="Estados a filtrar"),
+                    mesa_id: int | None = None,
+                    mesero_id: int | None = None,
+                    fecha: datetime.date | None = None,
+                    limit: int = Query(10, ge=1, le=20, description="Cantidad de paginas por pedido"),
+                    page: int = Query(1, ge=1, description="Numero de paginas (1>=)"),
+                    current_user: dict = Depends(get_current_user),
+                    db: Session = Depends(get_session)
+                    ):
+    consulta = select(Pedido).where(Pedido.restaurante_id == current_user["restaurante_id"])
+    if estado:
+        consulta = consulta.where(Pedido.estado.in_(estado))
+    if mesa_id is not None:
+        consulta = consulta.where(Pedido.mesa_id == mesa_id)
+    if mesero_id is not None:
+        consulta = consulta.where(Pedido.mesero_id == mesero_id)
+    if fecha is not None:
+        inicio_dia = datetime.datetime.combine(fecha, datetime.time.min, tzinfo=datetime.timezone.utc)
+        final_dia = datetime.datetime.combine(fecha, datetime.time.max, tzinfo=datetime.timezone.utc)
+        consulta = consulta.where(Pedido.fecha_creacion >= inicio_dia, Pedido.fecha_creacion <= final_dia)
+
+    total_pedidos = db.exec(select(func.count("*")).select_from(consulta.subquery())).one()
+
+    consulta = consulta.options(selectinload(Pedido.detalles).joinedload(DetallePedido.plato))
+
+    offset = (page - 1) * limit
+
+    items = db.exec(consulta.order_by(Pedido.fecha_creacion.desc()).limit(limit).offset(offset)).all()
+    total_paginas = math.ceil(total_pedidos / limit) if total_pedidos > 0 else 0
+    pagina_actual = (total_paginas // limit) + 1
+    tiene_anterior = pagina_actual > 1
+    tiene_siguiente = pagina_actual < total_paginas
+
+    return PedidoPagination(
+        items=items,
+        total=total_pedidos,
+        limit=limit,
+        offset=offset,
+        pagina=pagina_actual,
+        total_paginas=total_paginas,
+        tiene_siguiente=tiene_siguiente,
+        tiene_anterior=tiene_anterior
+    )
