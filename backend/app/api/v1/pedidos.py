@@ -2,12 +2,14 @@ import datetime
 import math
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from sqlalchemy import Select
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import get_session
 from app.api.deps import get_current_user
-from app.models.pedido import Pedido, DetallePedido, PedidoCreate, PedidoPagination, EstadosValidosPedidos
+from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
+                               EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles, DetalleEstadoUpdate)
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
@@ -117,3 +119,47 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
         tiene_siguiente=tiene_siguiente,
         tiene_anterior=tiene_anterior
     )
+
+@router.patch("/pedidos/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
+def cambiar_plato_estado(detalle_id: int,
+                         datos: DetalleEstadoUpdate,
+                         current_user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_session)):
+    consulta = select(DetallePedido).where(DetallePedido.id == detalle_id)
+    obj_detalle = db.exec(consulta).first()
+    if obj_detalle is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe este Detalle Pedido"
+        )
+    pedido = obj_detalle.pedido
+    if pedido.restaurante_id != current_user["restaurante_id"]:
+        raise  HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe este Detalle Pedido en el restaurante"
+        )
+
+    obj_detalle.estado = datos.estado
+
+    list_platos = pedido.detalles
+
+    set_estado = set(plato.estado for plato in list_platos)
+
+    if len(set_estado) == 1 and EstadosValidosDetalles.CANCELADO in set_estado:
+        pedido.estado = EstadosValidosPedidos.CANCELADO
+    elif EstadosValidosDetalles.PENDIENTE not in set_estado and EstadosValidosDetalles.EN_PREPARACION not in set_estado and EstadosValidosDetalles.LISTO in set_estado:
+        pedido.estado = EstadosValidosPedidos.LISTO
+    elif EstadosValidosDetalles.EN_PREPARACION in set_estado or EstadosValidosDetalles.LISTO in set_estado:
+        pedido.estado = EstadosValidosPedidos.EN_PREPARACION
+
+    try:
+        db.add(obj_detalle)
+        db.add(pedido)
+        db.commit()
+        db.refresh(obj_detalle)
+        db.refresh(pedido)
+
+        return pedido
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno al guardar en la base de datos")
