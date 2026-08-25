@@ -77,6 +77,9 @@ class PedidoCreate(SQLModel):
     mesa_id: int
     detalles: list[DetallePedidoCreate]
 
+class DetalleEstadoUpdate(SQLModel):
+    estado: EstadosValidosDetalles
+
 class DetallePedidoRead(DetallePedidoBase):
     id: int
     plato: PlatoRead | None = None
