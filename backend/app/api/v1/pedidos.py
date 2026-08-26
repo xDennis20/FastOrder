@@ -2,14 +2,14 @@ import datetime
 import math
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
-from sqlalchemy import Select
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import get_session
 from app.api.deps import get_current_user
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
-                               EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles, DetalleEstadoUpdate)
+                               EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles,
+                               DetalleEstadoUpdate, PedidoUpdate)
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
@@ -120,7 +120,7 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
         tiene_anterior=tiene_anterior
     )
 
-@router.patch("/pedidos/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
+@router.patch("/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_plato_estado(detalle_id: int,
                          datos: DetalleEstadoUpdate,
                          current_user: dict = Depends(get_current_user),
@@ -163,3 +163,16 @@ def cambiar_plato_estado(detalle_id: int,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al guardar en la base de datos")
+
+@router.patch("/{pedido_id}", response_model=PedidoRead, status_code=status.HTTP_200_OK)
+def cambiar_cabecera_pedido(pedido_id: int,
+                            pedido_in: PedidoUpdate,
+                            current_user: dict = Depends(get_current_user),
+                            db: Session = Depends(get_session)):
+    consulta = select(Pedido).where(Pedido.id == pedido_id, Pedido.restaurante_id == current_user["restaurante_id"])
+    obj_pedido = db.exec(consulta).first()
+    if obj_pedido is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe este Pedido"
+        )
