@@ -80,6 +80,11 @@ class PedidoCreate(SQLModel):
 class DetalleEstadoUpdate(SQLModel):
     estado: EstadosValidosDetalles
 
+class PedidoUpdate(SQLModel):
+    estado: EstadosValidosPedidos
+    mesa_id: int | None
+    mesero_id: int | None
+
 class DetallePedidoRead(DetallePedidoBase):
     id: int
     plato: PlatoRead | None = None
