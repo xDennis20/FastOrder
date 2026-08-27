@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 from decimal import Decimal
-from typing import TYPE_CHECKING,  Optional
+from typing import TYPE_CHECKING, Optional, Literal
 from sqlmodel import SQLModel, Field, Relationship
 from enum import Enum
 
@@ -81,7 +81,7 @@ class DetalleEstadoUpdate(SQLModel):
     estado: EstadosValidosDetalles
 
 class PedidoUpdate(SQLModel):
-    estado: EstadosValidosPedidos
+    estado: Literal[EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO] | None = None
     mesa_id: int | None
     mesero_id: int | None
 
