@@ -7,9 +7,11 @@ from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import get_session
 from app.api.deps import get_current_user
+from app.models.mesa import Mesa
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
                                EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles,
                                DetalleEstadoUpdate, PedidoUpdate)
+from app.models.usuario import Usuario
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
@@ -176,3 +178,49 @@ def cambiar_cabecera_pedido(pedido_id: int,
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No existe este Pedido"
         )
+
+    if obj_pedido.estado in [EstadosValidosPedidos.CANCELADO,
+                             EstadosValidosPedidos.PAGADO]:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede modificar un pedido que ya ha sido finalizado o cancelado"
+        )
+
+    if pedido_in.estado:
+        if pedido_in.estado == EstadosValidosPedidos.CANCELADO:
+            detalles = obj_pedido.detalles
+            for detalle in detalles:
+                detalle.estado = EstadosValidosDetalles.CANCELADO
+                db.add(detalle)
+            obj_pedido.estado = pedido_in.estado
+        else:
+            obj_pedido.estado = pedido_in.estado
+
+    if pedido_in.mesero_id is not None:
+        consulta_mesero = (select(Usuario)
+                           .where(Usuario.id == pedido_in.mesero_id,
+                                  Usuario.restaurante_id == current_user["restaurante_id"],
+                                  Usuario.rol_id == 1))
+        obj_mesero = db.exec(consulta_mesero).first()
+        if obj_mesero is None:
+            raise HTTPException(status_code=404, detail="Mesero no encontrado")
+        obj_pedido.mesero_id = obj_mesero.id
+
+    if pedido_in.mesa_id is not None:
+        consulta_mesa = (select(Mesa)
+                         .where(Mesa.id == pedido_in.mesa_id,
+                                           Mesa.restaurante_id == current_user["restaurante_id"]))
+        obj_mesa = db.exec(consulta_mesa).first()
+        if obj_mesa is None:
+            raise HTTPException(status_code=404, detail="Mesa no encontrada")
+        obj_pedido.mesa_id = obj_mesa.id
+
+    try:
+        db.add(obj_pedido)
+        db.commit()
+        db.refresh(obj_pedido)
+
+        return obj_pedido
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno al guardar los cambios en la base de datos")
