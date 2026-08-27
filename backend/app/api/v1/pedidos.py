@@ -10,7 +10,8 @@ from app.api.deps import get_current_user
 from app.models.mesa import Mesa
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
                                EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles,
-                               DetalleEstadoUpdate, PedidoUpdate)
+                               DetalleEstadoUpdate, PedidoUpdate, DetallePedidoCreate)
+from app.models.plato import Plato
 from app.models.usuario import Usuario
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
@@ -214,6 +215,52 @@ def cambiar_cabecera_pedido(pedido_id: int,
         if obj_mesa is None:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")
         obj_pedido.mesa_id = obj_mesa.id
+
+    try:
+        db.add(obj_pedido)
+        db.commit()
+        db.refresh(obj_pedido)
+
+        return obj_pedido
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno al guardar los cambios en la base de datos")
+
+@router.post("/{pedido_id}/detalles", response_model=PedidoRead)
+def agregar_platos(pedido_id: int,
+                   detalles_in: list[DetallePedidoCreate],
+                   current_user: dict = Depends(get_current_user),
+                   db: Session = Depends(get_session)):
+    consulta_pedido = (select(Pedido)
+                       .where(Pedido.id == pedido_id,
+                              Pedido.restaurante_id == current_user["restaurante_id"]))
+    obj_pedido = db.exec(consulta_pedido).first()
+    if obj_pedido is None:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if obj_pedido.estado in [EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]:
+        raise HTTPException(status_code=400, detail="Accion no permitida, Pedido cerrado")
+
+    for plato in detalles_in:
+        consulta_plato = (select(Plato)
+                          .where(Plato.id == plato.plato_id,
+                                 Plato.restaurante_id == current_user["restaurante_id"]))
+        obj_plato = db.exec(consulta_plato).first()
+        if obj_plato is None:
+            raise HTTPException(status_code=404, detail="Plato no encontrado")
+
+        detalle_obj = DetallePedido(
+            pedido_id=pedido_id,
+            plato_id=obj_plato.id,
+            precio_unitario=obj_plato.precio,
+            cantidad=plato.cantidad,
+            notas=plato.notas,
+            estado=EstadosValidosDetalles.PENDIENTE
+        )
+
+        db.add(detalle_obj)
+
+    if obj_pedido.estado == EstadosValidosPedidos.LISTO:
+        obj_pedido.estado = EstadosValidosPedidos.EN_PREPARACION
 
     try:
         db.add(obj_pedido)
