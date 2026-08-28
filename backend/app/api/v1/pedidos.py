@@ -13,8 +13,7 @@ from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagina
                                DetalleEstadoUpdate, PedidoUpdate, DetallePedidoCreate)
 from app.models.plato import Plato
 from app.models.usuario import Usuario
-from app.models.factura import (FacturaCreate, Factura, FacturaRead,
-                                TiposPagosValidos)
+from app.models.factura import (FacturaCreate, Factura, FacturaRead)
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
