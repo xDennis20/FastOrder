@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, Literal
+from pydantic import computed_field
 from sqlmodel import SQLModel, Field, Relationship
 from enum import Enum
 
@@ -89,10 +90,26 @@ class DetallePedidoRead(DetallePedidoBase):
     id: int
     plato: PlatoRead | None = None
 
+    @computed_field
+    @property
+    def subtotal(self) -> Decimal:
+        return self.cantidad * self.precio_unitario
+
 class PedidoRead(PedidoBase):
     id: int
     detalles : list[DetallePedidoRead] = []
     restaurante_id: int
+
+    @computed_field
+    @property
+    def total(self) -> Decimal:
+        total = Decimal("0.00")
+        for plato in self.detalles:
+            if plato.estado != EstadosValidosDetalles.CANCELADO:
+                total += plato.subtotal
+
+        return total
+
 
 class PedidoPagination(SQLModel):
     items: list[PedidoRead] = []
