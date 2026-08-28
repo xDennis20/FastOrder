@@ -222,6 +222,23 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
         tiene_anterior=tiene_anterior
     )
 
+@router.get("/{pedido_id}", response_model=PedidoRead)
+def obtener_pedido(pedido_id: int,
+                   current_user: dict = Depends(get_current_user),
+                   db: Session = Depends(get_session)):
+    consulta_pedido = (select(Pedido)
+                       .where(Pedido.id == pedido_id,
+                              Pedido.restaurante_id == current_user["restaurante_id"]))
+    obj_pedido = db.exec(consulta_pedido).first()
+
+    if obj_pedido is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe este Pedido"
+        )
+
+    return obj_pedido
+
 @router.patch("/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_plato_estado(detalle_id: int,
                          datos: DetalleEstadoUpdate,
