@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlmodel import select, Session
 from app.models.mesa import MesaCreate, MesaRead, Mesa, MesaVincular, EstadosValidos, MesaEstadoUpdate
 from app.api.deps import get_current_user, get_session
-from app.models.pedido import Pedido
+from app.models.pedido import Pedido, EstadosValidosPedidos
 
 router = APIRouter(prefix="/mesas", tags=["mesas"])
 
@@ -85,7 +85,7 @@ def mesa_cambiar_estado(mesa_id: int, estado: MesaEstadoUpdate,current_user: dic
     if estado.estado == EstadosValidos.disponible:
         consulta_pedidos_activos = select(Pedido).where(Pedido.restaurante_id == current_user.get("restaurante_id"),
                                                         Pedido.mesa_id == mesa_id,
-                                                        Pedido.estado.in_(["Pendiente", "En preparación", "Entregado"]))
+                                                        Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]))
         pedido_activo = db.exec(consulta_pedidos_activos).first()
 
         if pedido_activo is not None:
