@@ -5,14 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
+from app.api.deps import VerificarRol
 from app.core.database import get_session
-from app.api.deps import get_current_user
 from app.models.mesa import Mesa
+from app.api.v1.auth.schemas import TokenData
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
                                EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles,
                                DetalleEstadoUpdate, PedidoUpdate, DetallePedidoCreate)
 from app.models.plato import Plato
-from app.models.usuario import Usuario
+from app.models.usuario import Usuario, RolesValidos
 from app.models.factura import (FacturaCreate, Factura, FacturaRead)
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
@@ -30,7 +31,7 @@ def crear_pedido(
         pedido_in: PedidoCreate,
         background_tasks: BackgroundTasks,
         db: Session = Depends(get_session),
-        current_user: dict = Depends(get_current_user)
+        current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO]))
 ):
     if not pedido_in.detalles:
         raise HTTPException(
@@ -41,7 +42,7 @@ def crear_pedido(
     try:
         nuevo_pedido = Pedido(
             mesa_id=pedido_in.mesa_id,
-            restaurante_id=current_user["restaurante_id"],
+            restaurante_id=current_user.restaurante_id,
             estado="Pendiente"
         )
         db.add(nuevo_pedido)
@@ -82,11 +83,11 @@ def crear_pedido(
 @router.post("/{pedido_id}/detalles", response_model=PedidoRead, status_code=status.HTTP_201_CREATED)
 def agregar_platos(pedido_id: int,
                    detalles_in: list[DetallePedidoCreate],
-                   current_user: dict = Depends(get_current_user),
+                   current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO])),
                    db: Session = Depends(get_session)):
     consulta_pedido = (select(Pedido)
                        .where(Pedido.id == pedido_id,
-                              Pedido.restaurante_id == current_user["restaurante_id"]))
+                              Pedido.restaurante_id == current_user.restaurante_id))
     obj_pedido = db.exec(consulta_pedido).first()
     if obj_pedido is None:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
@@ -96,7 +97,7 @@ def agregar_platos(pedido_id: int,
     for plato in detalles_in:
         consulta_plato = (select(Plato)
                           .where(Plato.id == plato.plato_id,
-                                 Plato.restaurante_id == current_user["restaurante_id"]))
+                                 Plato.restaurante_id == current_user.restaurante_id))
         obj_plato = db.exec(consulta_plato).first()
         if obj_plato is None:
             raise HTTPException(status_code=404, detail="Plato no encontrado")
@@ -129,11 +130,11 @@ def agregar_platos(pedido_id: int,
 @router.post("/{pedido_id}/facturar", response_model=FacturaRead, status_code=status.HTTP_201_CREATED)
 def cobrar_pedido(pedido_id: int,
                   factura_in: FacturaCreate,
-                  current_user: dict = Depends(get_current_user),
+                  current_user: TokenData = Depends(VerificarRol([RolesValidos.CAJA, RolesValidos.DUENO])),
                   db: Session = Depends(get_session)):
     consulta_pedido = (select(Pedido)
                        .where(Pedido.id == pedido_id,
-                              Pedido.restaurante_id == current_user["restaurante_id"]))
+                              Pedido.restaurante_id == current_user.restaurante_id))
 
     obj_pedido = db.exec(consulta_pedido).first()
 
@@ -183,10 +184,10 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
                     fecha: datetime.date | None = None,
                     limit: int = Query(10, ge=1, le=20, description="Cantidad de paginas por pedido"),
                     page: int = Query(1, ge=1, description="Numero de paginas (1>=)"),
-                    current_user: dict = Depends(get_current_user),
+                    current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.COCINERO, RolesValidos.DUENO, RolesValidos.CAJA])),
                     db: Session = Depends(get_session)
                     ):
-    consulta = select(Pedido).where(Pedido.restaurante_id == current_user["restaurante_id"])
+    consulta = select(Pedido).where(Pedido.restaurante_id == current_user.restaurante_id)
     if estado:
         consulta = consulta.where(Pedido.estado.in_(estado))
     if mesa_id is not None:
@@ -223,11 +224,11 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
 
 @router.get("/{pedido_id}", response_model=PedidoRead)
 def obtener_pedido(pedido_id: int,
-                   current_user: dict = Depends(get_current_user),
+                   current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.COCINERO, RolesValidos.CAJA, RolesValidos.DUENO])),
                    db: Session = Depends(get_session)):
     consulta_pedido = (select(Pedido)
                        .where(Pedido.id == pedido_id,
-                              Pedido.restaurante_id == current_user["restaurante_id"]))
+                              Pedido.restaurante_id == current_user.restaurante_id))
     obj_pedido = db.exec(consulta_pedido).first()
 
     if obj_pedido is None:
@@ -241,7 +242,7 @@ def obtener_pedido(pedido_id: int,
 @router.patch("/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_plato_estado(detalle_id: int,
                          datos: DetalleEstadoUpdate,
-                         current_user: dict = Depends(get_current_user),
+                         current_user: TokenData = Depends(VerificarRol([RolesValidos.COCINERO, RolesValidos.DUENO])),
                          db: Session = Depends(get_session)):
     consulta = select(DetallePedido).where(DetallePedido.id == detalle_id)
     obj_detalle = db.exec(consulta).first()
@@ -251,7 +252,7 @@ def cambiar_plato_estado(detalle_id: int,
             detail="No existe este Detalle Pedido"
         )
     pedido = obj_detalle.pedido
-    if pedido.restaurante_id != current_user["restaurante_id"]:
+    if pedido.restaurante_id != current_user.restaurante_id:
         raise  HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No existe este Detalle Pedido en el restaurante"
@@ -285,9 +286,9 @@ def cambiar_plato_estado(detalle_id: int,
 @router.patch("/{pedido_id}", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_cabecera_pedido(pedido_id: int,
                             pedido_in: PedidoUpdate,
-                            current_user: dict = Depends(get_current_user),
+                            current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO])),
                             db: Session = Depends(get_session)):
-    consulta = select(Pedido).where(Pedido.id == pedido_id, Pedido.restaurante_id == current_user["restaurante_id"])
+    consulta = select(Pedido).where(Pedido.id == pedido_id, Pedido.restaurante_id == current_user.restaurante_id)
     obj_pedido = db.exec(consulta).first()
     if obj_pedido is None:
         raise HTTPException(
@@ -315,8 +316,8 @@ def cambiar_cabecera_pedido(pedido_id: int,
     if pedido_in.mesero_id is not None:
         consulta_mesero = (select(Usuario)
                            .where(Usuario.id == pedido_in.mesero_id,
-                                  Usuario.restaurante_id == current_user["restaurante_id"],
-                                  Usuario.rol_id == 1))
+                                  Usuario.restaurante_id == current_user.restaurante_id,
+                                  Usuario.rol == 1))
         obj_mesero = db.exec(consulta_mesero).first()
         if obj_mesero is None:
             raise HTTPException(status_code=404, detail="Mesero no encontrado")
@@ -325,7 +326,7 @@ def cambiar_cabecera_pedido(pedido_id: int,
     if pedido_in.mesa_id is not None:
         consulta_mesa = (select(Mesa)
                          .where(Mesa.id == pedido_in.mesa_id,
-                                           Mesa.restaurante_id == current_user["restaurante_id"]))
+                                           Mesa.restaurante_id == current_user.restaurante_id))
         obj_mesa = db.exec(consulta_mesa).first()
         if obj_mesa is None:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")

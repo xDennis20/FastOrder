@@ -31,7 +31,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token_payload = {
         "sub": usuario_obj.correo,
         "username": f"{usuario_obj.nombres} {usuario_obj.apellidos}",
-        "restaurante_id": usuario_obj.restaurante_id
+        "restaurante_id": usuario_obj.restaurante_id,
+        "rol": usuario_obj.rol
     }
 
     access_token = crear_token_acceso(data=token_payload)

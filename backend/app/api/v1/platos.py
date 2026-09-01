@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from sqlalchemy.exc import SQLAlchemyError
 from app.models.plato import PlatoCreate, Plato, PlatoRead
+from app.api.v1.auth.schemas import TokenData
 from app.service.categoria import verificar_categoria
-from app.models.usuario import Usuario
+from app.models.usuario import Usuario, RolesValidos
 from app.api.deps import get_session
-from app.api.deps import get_current_user
+from app.api.deps import VerificarRol
 
 router = APIRouter(prefix="/platos", tags=["platos"])
 
@@ -13,25 +14,15 @@ router = APIRouter(prefix="/platos", tags=["platos"])
 def crear_plato(
         plato_in: PlatoCreate,
         db: Session = Depends(get_session),
-        current_user: dict = Depends(get_current_user)
+        current_user: TokenData = Depends(VerificarRol(RolesValidos.DUENO))
 ):
-    statement = select(Usuario).where(Usuario.correo == current_user["email"])
-    usuario_db: Usuario = db.exec(statement).first()
 
-    if not usuario_db or not usuario_db.rol or usuario_db.rol.nombre.lower() != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos (Rol Admin requerido) para crear platos."
-        )
-
-    id_restaurante_seguro = current_user["restaurante_id"]
-
-    categoria_obj = verificar_categoria(plato_in.categoria_id, db)
+    categoria_obj = verificar_categoria(plato_in.categoria_id, current_user.restaurante_id, db)
 
     try:
         nuevo_plato = Plato.model_validate(plato_in)
         nuevo_plato.categoria_id = categoria_obj.id
-        nuevo_plato.restaurante_id = id_restaurante_seguro
+        nuevo_plato.restaurante_id = current_user.restaurante_id
         db.add(nuevo_plato)
         db.commit()
         db.refresh(nuevo_plato)

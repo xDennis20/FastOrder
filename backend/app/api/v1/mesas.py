@@ -2,16 +2,18 @@ from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlmodel import select, Session
 from app.models.mesa import MesaCreate, MesaRead, Mesa, MesaVincular, EstadosValidos, MesaEstadoUpdate
-from app.api.deps import get_current_user, get_session
+from app.api.v1.auth.schemas import TokenData
+from app.api.deps import get_session, VerificarRol
 from app.models.pedido import Pedido, EstadosValidosPedidos
+from app.models.usuario import RolesValidos
 
 router = APIRouter(prefix="/mesas", tags=["mesas"])
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=MesaRead)
-def crear_mesa(mesa_in: MesaCreate, current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
+def crear_mesa(mesa_in: MesaCreate, current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO])), db: Session = Depends(get_session)):
     try:
         if mesa_in.mesa_principal_id is not None:
-            consulta = select(Mesa).where(Mesa.id == mesa_in.mesa_principal_id, Mesa.restaurante_id == current_user.get("restaurante_id"))
+            consulta = select(Mesa).where(Mesa.id == mesa_in.mesa_principal_id, Mesa.restaurante_id == current_user.restaurante_id)
             mesa_existente = db.exec(consulta).first()
             if not mesa_existente:
                 raise HTTPException(status_code=404, detail="Mesa principal no existente")
@@ -19,7 +21,7 @@ def crear_mesa(mesa_in: MesaCreate, current_user: dict = Depends(get_current_use
         mesa_nueva = Mesa(numero_mesa=mesa_in.numero_mesa,
                           estado=mesa_in.estado,
                           mesa_principal_id=mesa_in.mesa_principal_id,
-                          restaurante_id=current_user.get("restaurante_id"))
+                          restaurante_id=current_user.restaurante_id)
 
         db.add(mesa_nueva)
         db.commit()
@@ -37,9 +39,9 @@ def crear_mesa(mesa_in: MesaCreate, current_user: dict = Depends(get_current_use
 def vincular_mesas(mesa_id: int,
                mesa_principal: MesaVincular,
                db: Session = Depends(get_session),
-               current_user: dict = Depends(get_current_user)):
+               current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO]))):
     mesa_principal_id = mesa_principal.mesa_principal_id
-    restaurante_id = current_user.get("restaurante_id")
+    restaurante_id = current_user.restaurante_id
     consulta_mesa_modificar = select(Mesa).where(Mesa.restaurante_id == restaurante_id, Mesa.id == mesa_id)
     mesa_modificar = db.exec(consulta_mesa_modificar).first()
 
@@ -75,15 +77,15 @@ def vincular_mesas(mesa_id: int,
         raise HTTPException(status_code=500, detail="Error interno al modificar el objeto en la base de datos")
 
 @router.patch("/{mesa_id}/estado", response_model=MesaRead, response_description="Cambio de estado de la mesa exitoso", status_code=status.HTTP_200_OK)
-def mesa_cambiar_estado(mesa_id: int, estado: MesaEstadoUpdate,current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
-    consulta_mesa = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"), Mesa.id == mesa_id)
+def mesa_cambiar_estado(mesa_id: int, estado: MesaEstadoUpdate, current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO])), db: Session = Depends(get_session)):
+    consulta_mesa = select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id, Mesa.id == mesa_id)
     mesa = db.exec(consulta_mesa).first()
 
     if mesa is None:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
 
     if estado.estado == EstadosValidos.disponible:
-        consulta_pedidos_activos = select(Pedido).where(Pedido.restaurante_id == current_user.get("restaurante_id"),
+        consulta_pedidos_activos = select(Pedido).where(Pedido.restaurante_id == current_user.restaurante_id,
                                                         Pedido.mesa_id == mesa_id,
                                                         Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]))
         pedido_activo = db.exec(consulta_pedidos_activos).first()
@@ -104,22 +106,22 @@ def mesa_cambiar_estado(mesa_id: int, estado: MesaEstadoUpdate,current_user: dic
         raise HTTPException(status_code=500, detail="Error interno al modificar el objeto en la base de datos")
 
 @router.get("/", response_model=list[MesaRead])
-def obtener_mesas(current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
-    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"))
+def obtener_mesas(current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO, RolesValidos.CAJA])), db: Session = Depends(get_session)):
+    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id)
     mesas_items = db.exec(consulta).all()
     return mesas_items
 
 @router.get("/{mesa_id}", response_model=MesaRead)
-def obtener_mesa(mesa_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)):
-    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"), Mesa.id == mesa_id)
+def obtener_mesa(mesa_id: int, current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO, RolesValidos.CAJA])), db: Session = Depends(get_session)):
+    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id, Mesa.id == mesa_id)
     mesa_item = db.exec(consulta).one()
     if mesa_item is None:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
     return mesa_item
 
 @router.delete("/{mesa_id}", status_code=status.HTTP_200_OK)
-def eliminar_mesa(mesa_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_session)) -> dict:
-    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.get("restaurante_id"), Mesa.id == mesa_id)
+def eliminar_mesa(mesa_id: int, current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO])), db: Session = Depends(get_session)) -> dict:
+    consulta = select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id, Mesa.id == mesa_id)
     mesa: Mesa | None = db.exec(consulta).first()
     if mesa is None:
         raise HTTPException(status_code=404, detail="Mesa a eliminar no existe")
