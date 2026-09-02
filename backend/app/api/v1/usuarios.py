@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select
 import bcrypt
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -46,10 +46,15 @@ def registrar_usuario(usuario_in: UsuarioCreate,
         raise HTTPException(status_code=500, detail="Error interno al guardar en la base de datos")
 
 @router.get("", response_model=list[UsuarioRead])
-def obtener_usuarios(db: Session = Depends(get_session),
+def obtener_usuarios(activo: bool | None = Query(default=None, description="Filtrar por estado activo/inactivo"),
+                     db: Session = Depends(get_session),
                      current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO]))):
     consulta_usuarios = (select(Usuario)
                          .where(Usuario.restaurante_id == current_user.restaurante_id))
+    if activo is not None:
+        consulta_usuarios = consulta_usuarios.where(Usuario.estado == activo)
+
+    consulta_usuarios = consulta_usuarios.order_by(Usuario.nombres.asc())
     obj_usuarios = db.exec(consulta_usuarios).all()
 
     return obj_usuarios

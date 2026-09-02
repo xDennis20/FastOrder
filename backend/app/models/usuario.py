@@ -34,6 +34,7 @@ class UsuarioBase(SQLModel):
     nombres: str = Field(nullable=False)
     apellidos: str = Field(nullable=False)
     telefono: str = Field(nullable=False, unique=True, max_length=10, index=True)
+    estado: bool = Field(default=True, nullable=False)
     correo: EmailStr
     rol: RolesValidos = Field(default=RolesValidos.MESERO, nullable=False)
     restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")
@@ -57,6 +58,7 @@ class UsuarioRead(UsuarioBase):
 class UsuarioUpdate(SQLModel):
     nombres: str | None = None
     apellidos: str | None = None
+    estado: bool | None = None
     password: str | None = Field(default=None, min_length=6)
     telefono: str | None = Field(default=None, max_length=10)
     correo: EmailStr | None = Field(default=None, max_length=200)

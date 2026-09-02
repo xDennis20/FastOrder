@@ -14,6 +14,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     constr = select(Usuario).where(Usuario.correo == form_data.username)
     usuario_obj: Usuario = db.exec(constr).first()
 
+    if not usuario_obj.estado:
+        raise HTTPException(
+            status=status.HTTP_403_FORBIDDEN,
+            detail="Esta cuenta esta desactivada. Contacte con el administrador"
+        )
+
     password_correcta = False
     if usuario_obj:
         password_correcta = bcrypt.checkpw(
