@@ -6,7 +6,7 @@ from sqlmodel import SQLModel, Field, Relationship
 if TYPE_CHECKING:
     from app.models.pedido import Pedido
 
-class TiposPagosValidos(Enum):
+class TiposPagosValidos(str,Enum):
     EFECTIVO = "Efectivo"
     TRANSFERENCIA = "Transferencia"
 

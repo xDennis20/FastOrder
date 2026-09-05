@@ -1,6 +1,7 @@
 import os
 import cloudinary
 import jwt
+from sqlmodel import select, Session
 from datetime import timedelta, datetime, UTC
 from app.core.database import get_session
 from app.models.usuario import RolesValidos
@@ -9,6 +10,9 @@ from pydantic import ValidationError
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+
+from models.restaurante import Restaurante
+from models.usuario import Usuario
 
 SECRET_KEY = os.getenv("SECRET_KEY", "020620D")
 ALGORITHM = "HS256"
@@ -33,7 +37,8 @@ def decode_token(token: str) -> dict:
     payload = jwt.decode(jwt=token, key=SECRET_KEY, algorithms=[ALGORITHM])
     return payload
 
-def get_current_user(token: str = Depends(oauth_scheme)):
+def get_current_user(token: str = Depends(oauth_scheme),
+                     db: Session = Depends(get_session)):
     credentials_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No autorizado",
@@ -53,7 +58,6 @@ def get_current_user(token: str = Depends(oauth_scheme)):
                   rol=rol
                   )
 
-        return token_data
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,6 +67,26 @@ def get_current_user(token: str = Depends(oauth_scheme)):
         raise credentials_exc
     except InvalidTokenError:
         raise credentials_exc
+
+    usuario_obj = db.exec(select(Usuario)
+                          .where(Usuario.correo == token_data.email)).first()
+
+    if usuario_obj is None or not usuario_obj.activo:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Usuario no existente o inhabilitado")
+
+    if token_data.rol == RolesValidos.SUPERADMIN:
+        return token_data
+
+    restaurante_obj = db.exec(select(Restaurante)
+                                   .where(Restaurante.id == token_data.restaurante_id)).first()
+
+    if restaurante_obj is None or not restaurante_obj.activo:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Restaurante no existente o inhabilitado")
+
+    return token_data
+
 
 class VerificarRol:
     def __init__(self, roles_permitidos: list[RolesValidos]):

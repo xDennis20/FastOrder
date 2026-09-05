@@ -6,6 +6,8 @@ from app.api.v1.auth.schemas import Token
 from app.core.database import get_session
 from app.models.usuario import Usuario
 from app.api.deps import crear_token_acceso
+from app.models.restaurante import Restaurante
+from app.models.usuario import RolesValidos
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -14,13 +16,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     constr = select(Usuario).where(Usuario.correo == form_data.username)
     usuario_obj: Usuario = db.exec(constr).first()
 
-    if not usuario_obj.estado:
-        raise HTTPException(
-            status=status.HTTP_403_FORBIDDEN,
-            detail="Esta cuenta esta desactivada. Contacte con el administrador"
-        )
-
     password_correcta = False
+
     if usuario_obj:
         password_correcta = bcrypt.checkpw(
             form_data.password.encode("utf-8")[:72],
@@ -33,6 +30,22 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Correo o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if not usuario_obj.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esta cuenta esta desactivada. Contacte con el administrador"
+        )
+
+    if usuario_obj.rol != RolesValidos.SUPERADMIN:
+        restaurante_obj: Restaurante = db.exec(
+            select(Restaurante)
+            .where(Restaurante.id == usuario_obj.restaurante_id)).first()
+        if restaurante_obj is None or not restaurante_obj.activo:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Esta cuenta esta en un restaurante desactivado. Contacte con el administrador"
+            )
 
     token_payload = {
         "sub": usuario_obj.correo,
