@@ -25,16 +25,17 @@ def validar_complejidad_password(v: str | None) -> str | None:
     return v
 
 class RolesValidos(str, Enum):
+    SUPERADMIN = "superadmin"
     DUENO = "dueno"
     MESERO = "mesero"
     COCINERO = "cocinero"
     CAJA = "caja"
 
 class UsuarioBase(SQLModel):
-    nombres: str = Field(nullable=False)
-    apellidos: str = Field(nullable=False)
-    telefono: str = Field(nullable=False, unique=True, max_length=10, index=True)
-    estado: bool = Field(default=True, nullable=False)
+    nombres: str = Field(default=None, max_length=120)
+    apellidos: str  = Field(default=None, max_length=120)
+    telefono: str | None = Field(default=None, unique=True, max_length=10, index=True)
+    activo: bool = Field(default=True, nullable=False)
     correo: EmailStr
     rol: RolesValidos = Field(default=RolesValidos.MESERO, nullable=False)
     restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")

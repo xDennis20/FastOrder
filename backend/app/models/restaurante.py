@@ -10,12 +10,16 @@ if TYPE_CHECKING:
     from app.models.categoria import Categoria
     from app.models.pedido import Pedido
 
-class Restaurante(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True, index=True)
+class RestauranteBase(SQLModel):
     nombre: str = Field(nullable=False, max_length=100)
-    ruc: str = Field(nullable=False, unique=True, max_length=13, index=True)
+    ruc: str | None = Field(default=None, unique=True, max_length=13, index=True)
+    logo_url: str | None = Field(default=None)
     direccion: str | None = Field(default=None, max_length=250)
-    telefono: str | None = Field(default=None, max_length=15)
+    telefono: str | None = Field(default=None, max_length=10)
+
+class Restaurante(RestauranteBase, table=True):
+    id: int | None = Field(default=None, primary_key=True, index=True)
+    activo: bool = Field(default=True, nullable=False)
 
     fecha_registro: datetime = Field(default_factory=lambda: datetime.now(UTC), nullable=False)
 
@@ -25,18 +29,44 @@ class Restaurante(SQLModel, table=True):
     categorias: list["Categoria"] = Relationship(back_populates="restaurante")
     pedidos: list["Pedido"] = Relationship(back_populates="restaurante")
 
-class RestauranteBase(SQLModel):
-    nombre: str = Field(nullable=False, max_length=100)
-    ruc: str = Field(nullable=False, unique=True, max_length=13, index=True)
-    direccion: str | None = Field(default=None, max_length=250)
-    telefono: str | None = Field(default=None, max_length=15)
-
 class RestauranteCreate(RestauranteBase):
-    @field_validator("ruc","telefono")
+    @field_validator("ruc")
     @classmethod
-    def validar_digits(cls, value: str) -> str:
-        if not value.isdigit():
-            raise ValueError(f"Error: El RUC contiene letras")
+    def validar_digits_ruc(cls, value: str) -> str | None:
+        if value is not None:
+            if not value.isdigit():
+                raise ValueError(f"Error: El RUC contiene letras")
+        return value
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_digits_telefono(cls, value: str) -> str | None:
+        if value is not None:
+            if not value.isdigit():
+                raise ValueError(f"Error: El telefono contiene letras")
+        return value
+
+class RestauranteUpdate(SQLModel):
+    nombre: str | None = Field(default=None, max_length=100)
+    ruc: str | None = Field(default=None, max_length=13)
+    logo_url: str | None = None
+    direccion: str | None = Field(default=None, max_length=250)
+    telefono: str | None = Field(default=None, max_length=10)
+
+    @field_validator("ruc")
+    @classmethod
+    def validar_digits_ruc(cls, value: str) -> str | None:
+        if value is not None:
+            if not value.isdigit():
+                raise ValueError(f"Error: El RUC contiene letras")
+        return value
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_digits_telefono(cls, value: str) -> str | None:
+        if value is not None:
+            if not value.isdigit():
+                raise ValueError(f"Error: El telefono contiene letras")
         return value
 
 class RestauranteRead(RestauranteBase):
