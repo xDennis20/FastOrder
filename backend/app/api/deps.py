@@ -1,4 +1,5 @@
 import os
+import cloudinary
 import jwt
 from datetime import timedelta, datetime, UTC
 from app.core.database import get_session
@@ -12,6 +13,12 @@ from fastapi.security import OAuth2PasswordBearer
 SECRET_KEY = os.getenv("SECRET_KEY", "020620D")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+cloudinary.config(
+    cloud_name= os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_Key= os.getenv("CLOUDINARY_API_KEY"),
+    api_secret= os.getenv("CLOUDINARY_API_SECRET")
+)
 
 oauth_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
