@@ -11,8 +11,8 @@ from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-from models.restaurante import Restaurante
-from models.usuario import Usuario
+from app.models.restaurante import Restaurante
+from app.models.usuario import Usuario
 
 SECRET_KEY = os.getenv("SECRET_KEY", "020620D")
 ALGORITHM = "HS256"
