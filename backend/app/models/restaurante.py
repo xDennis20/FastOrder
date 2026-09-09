@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.models.plato import Plato
     from app.models.categoria import Categoria
     from app.models.pedido import Pedido
+    from app.models.factura import Factura
 
 class RestauranteBase(SQLModel):
     nombre: str = Field(nullable=False, max_length=100)
@@ -28,6 +29,7 @@ class Restaurante(RestauranteBase, table=True):
     platos: list["Plato"] = Relationship(back_populates="restaurante")
     categorias: list["Categoria"] = Relationship(back_populates="restaurante")
     pedidos: list["Pedido"] = Relationship(back_populates="restaurante")
+    facturas: list["Factura"] = Relationship(back_populates="restaurante")
 
 class RestauranteCreate(RestauranteBase):
     @field_validator("ruc")
@@ -78,4 +80,5 @@ from app.models.mesa import Mesa
 from app.models.plato import Plato
 from app.models.categoria import Categoria
 from app.models.pedido import Pedido
+from app.models.factura import Factura
 Restaurante.model_rebuild()
