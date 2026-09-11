@@ -8,7 +8,8 @@ from app.models.usuario import RolesValidos
 from app.api.v1.auth.schemas import TokenData
 from pydantic import ValidationError
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-from fastapi import Depends, HTTPException, status
+from fastapi import (Depends, HTTPException, status,
+                     WebSocket, Query, WebSocketDisconnect)
 from fastapi.security import OAuth2PasswordBearer
 
 from app.models.restaurante import Restaurante
@@ -99,3 +100,30 @@ class VerificarRol:
                 detail="Permisos insuficientes"
             )
         return current_user
+
+class VerificarRolWS:
+    def __init__(self, roles_permitidos: list[RolesValidos]):
+        self.roles_permitidos = roles_permitidos
+
+    async def __call__(
+        self,
+        websocket: WebSocket,
+        token: str | None = Query(default=None)
+    ) -> TokenData:
+        if not token:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            raise WebSocketDisconnect()
+
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_data = TokenData(**payload)
+        except (InvalidTokenError, ValidationError):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            raise WebSocketDisconnect()
+
+        # Validación de rol
+        if user_data.rol not in self.roles_permitidos:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            raise WebSocketDisconnect()
+
+        return user_data

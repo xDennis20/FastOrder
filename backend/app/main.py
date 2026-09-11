@@ -11,6 +11,7 @@ from app.api.v1.pedidos import router as router_pedido
 from app.api.v1.mesas import router as router_mesa
 from app.api.v1.archivos import router as router_archivos
 from app.api.v1.estadisticas import router as router_estadisticas
+from app.api.v1.websockets import router as router_webscokets
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(router=router_mesa)
     app.include_router(router=router_archivos)
     app.include_router(router=router_estadisticas)
+    app.include_router(router=router_webscokets)
 
     return app
 
