@@ -1,8 +1,5 @@
-import jwt
 from fastapi import (APIRouter, WebSocket, Depends,
-                     WebSocketDisconnect, Query, status)
-from jwt.exceptions import InvalidTokenError
-from pydantic import ValidationError
+                     WebSocketDisconnect)
 from app.models.usuario import RolesValidos
 from app.api.deps import VerificarRolWS
 from app.api.v1.auth.schemas import TokenData
