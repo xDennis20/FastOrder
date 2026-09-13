@@ -48,25 +48,30 @@ def get_current_user(token: str = Depends(oauth_scheme),
 
     try:
         payload = decode_token(token)
-        sub: str | None = payload.get("sub")
+        user_id: int | None = payload.get("user_id")
+        sub: str | None = payload.get("email") or payload.get("sub")
         username: str | None = payload.get("username")
         restaurante_id: int | None = payload.get("restaurante_id")
         rol: str | None = payload.get("rol")
 
-        token_data = TokenData(email=sub,
+        token_data = TokenData(
+                  user_id=user_id,
+                  email=sub,
                   username=username,
                   restaurante_id=restaurante_id,
                   rol=rol
-                  )
+        )
 
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expirado",
             headers={"WWW-Authenticate": "Bearer"})
-    except ValidationError:
+    except ValidationError as e:
+        print("❌ Error de validación en TokenData:", e)
         raise credentials_exc
-    except InvalidTokenError:
+    except InvalidTokenError as e:
+        print("❌ Error de token inválido:", e)
         raise credentials_exc
 
     usuario_obj = db.exec(select(Usuario)
@@ -115,13 +120,12 @@ class VerificarRolWS:
             raise WebSocketDisconnect()
 
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = decode_token(token)
             user_data = TokenData(**payload)
         except (InvalidTokenError, ValidationError):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             raise WebSocketDisconnect()
 
-        # Validación de rol
         if user_data.rol not in self.roles_permitidos:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             raise WebSocketDisconnect()

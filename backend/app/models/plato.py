@@ -11,9 +11,9 @@ if TYPE_CHECKING:
     from app.models.restaurante import Restaurante
 
 class TamanoPlato(str, Enum):
-    PEQUENO = "Pequeño"
-    NORMAL = "Normal"
-    GRANDE = "Grande"
+    PEQUENO = "PEQUENO"
+    NORMAL = "NORMAL"
+    GRANDE = "GRANDE"
 
 class PlatoBase(SQLModel):
     nombre: str = Field(max_length=120)

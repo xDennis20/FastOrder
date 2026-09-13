@@ -1,7 +1,7 @@
 import datetime
 import math
-import time
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi import (APIRouter, Depends, HTTPException, status,
+                     BackgroundTasks, Query)
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,22 +9,16 @@ from app.api.deps import VerificarRol
 from app.core.database import get_session
 from app.models.mesa import Mesa
 from app.api.v1.auth.schemas import TokenData
+from app.models.websocket import EventoPedidoWS, TipoEventoCocina
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
                                EstadosValidosPedidos, PedidoRead, EstadosValidosDetalles,
                                DetalleEstadoUpdate, PedidoUpdate, DetallePedidoCreate)
 from app.models.plato import Plato
 from app.models.usuario import Usuario, RolesValidos
 from app.models.factura import (FacturaCreate, Factura, FacturaRead)
+from app.service.websocket_manager import manager
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
-
-
-def simular_notificacion_cocina(pedido_id: int, total_platos: int):
-    time.sleep(3)
-    print(
-        f"\n👨‍🍳 [COCINA NOTIFICADA] ¡Atención! Se envió el Pedido #{pedido_id} "
-        f"con {total_platos} platos a la pantalla de preparación.\n"
-    )
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def crear_pedido(
@@ -39,32 +33,56 @@ def crear_pedido(
             detail="El pedido debe contener al menos un plato."
         )
 
+    if current_user.rol == RolesValidos.MESERO:
+        mesero_asignado_id = current_user.user_id
+    else:
+        mesero_asignado_id = (
+            pedido_in.mesero_id if pedido_in.mesero_id else current_user.user_id
+        )
+
     try:
         nuevo_pedido = Pedido(
             mesa_id=pedido_in.mesa_id,
+            mesero_id=mesero_asignado_id,
             restaurante_id=current_user.restaurante_id,
             estado="Pendiente"
         )
         db.add(nuevo_pedido)
-        db.commit()
-        db.refresh(nuevo_pedido)
+        db.flush()
 
         for item in pedido_in.detalles:
+            plato = db.get(Plato, item.plato_id)
+
+            if not plato:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"El plato con ID {item.plato_id} no existe",
+                )
+
             detalle_db = DetallePedido(
                 pedido_id=nuevo_pedido.id,
                 plato_id=item.plato_id,
                 cantidad=item.cantidad,
                 notas=item.notas,
-                estado="Pendiente"
+                estado="Pendiente",
+                precio_unitario= plato.precio
             )
             db.add(detalle_db)
 
         db.commit()
+        db.refresh(nuevo_pedido)
+
+        pedido_dto = PedidoRead.model_validate(nuevo_pedido)
+
+        evento = EventoPedidoWS(
+            evento=TipoEventoCocina.PEDIDO_CREADO,
+            data=pedido_dto
+        )
 
         background_tasks.add_task(
-            simular_notificacion_cocina,
-            pedido_id=nuevo_pedido.id,
-            total_platos=len(pedido_in.detalles)
+            manager.broadcast,
+            evento.model_dump(mode="json"),
+            current_user.restaurante_id,
         )
 
         return {
@@ -82,6 +100,7 @@ def crear_pedido(
 
 @router.post("/{pedido_id}/detalles", response_model=PedidoRead, status_code=status.HTTP_201_CREATED)
 def agregar_platos(pedido_id: int,
+                   background_tasks: BackgroundTasks,
                    detalles_in: list[DetallePedidoCreate],
                    current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO])),
                    db: Session = Depends(get_session)):
@@ -89,39 +108,60 @@ def agregar_platos(pedido_id: int,
                        .where(Pedido.id == pedido_id,
                               Pedido.restaurante_id == current_user.restaurante_id))
     obj_pedido = db.exec(consulta_pedido).first()
+
     if obj_pedido is None:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
     if obj_pedido.estado in [EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]:
         raise HTTPException(status_code=400, detail="Accion no permitida, Pedido cerrado")
 
-    for plato in detalles_in:
-        consulta_plato = (select(Plato)
-                          .where(Plato.id == plato.plato_id,
-                                 Plato.restaurante_id == current_user.restaurante_id))
-        obj_plato = db.exec(consulta_plato).first()
-        if obj_plato is None:
-            raise HTTPException(status_code=404, detail="Plato no encontrado")
-
-        detalle_obj = DetallePedido(
-            pedido_id=pedido_id,
-            plato_id=obj_plato.id,
-            precio_unitario=obj_plato.precio,
-            cantidad=plato.cantidad,
-            notas=plato.notas,
-            estado=EstadosValidosDetalles.PENDIENTE
+    if not detalles_in:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe incluir al menos un plato para agregar al pedido.",
         )
 
-        db.add(detalle_obj)
-
-    if obj_pedido.estado == EstadosValidosPedidos.LISTO:
-        obj_pedido.estado = EstadosValidosPedidos.EN_PREPARACION
-
     try:
+        for plato in detalles_in:
+            consulta_plato = (select(Plato)
+                              .where(Plato.id == plato.plato_id,
+                                     Plato.restaurante_id == current_user.restaurante_id))
+            obj_plato = db.exec(consulta_plato).first()
+            if obj_plato is None:
+                raise HTTPException(status_code=404, detail="Plato no encontrado")
+
+            detalle_obj = DetallePedido(
+                pedido_id=pedido_id,
+                plato_id=obj_plato.id,
+                precio_unitario=obj_plato.precio,
+                cantidad=plato.cantidad,
+                notas=plato.notas,
+                estado=EstadosValidosDetalles.PENDIENTE
+            )
+
+            db.add(detalle_obj)
+
+        if obj_pedido.estado == EstadosValidosPedidos.LISTO:
+            obj_pedido.estado = EstadosValidosPedidos.EN_PREPARACION
+
         db.add(obj_pedido)
         db.commit()
         db.refresh(obj_pedido)
 
-        return obj_pedido
+        pedido_dto = PedidoRead.model_validate(obj_pedido)
+
+        evento = EventoPedidoWS(
+            evento=TipoEventoCocina.PEDIDO_ACTUALIZADO,
+            data=pedido_dto
+        )
+
+        background_tasks.add_task(
+        manager.broadcast,
+        evento.model_dump(mode="json"),
+        current_user.restaurante_id,
+        )
+
+        return pedido_dto
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al guardar los cambios en la base de datos")
@@ -129,6 +169,7 @@ def agregar_platos(pedido_id: int,
 
 @router.post("/{pedido_id}/facturar", response_model=FacturaRead, status_code=status.HTTP_201_CREATED)
 def cobrar_pedido(pedido_id: int,
+                  background_tasks: BackgroundTasks,
                   factura_in: FacturaCreate,
                   current_user: TokenData = Depends(VerificarRol([RolesValidos.CAJA, RolesValidos.DUENO])),
                   db: Session = Depends(get_session)):
@@ -170,6 +211,19 @@ def cobrar_pedido(pedido_id: int,
         db.add(obj_pedido)
         db.commit()
         db.refresh(factura_nueva)
+        db.refresh(obj_pedido)
+
+        pedido_dto = PedidoRead.model_validate(obj_pedido)
+        evento = EventoPedidoWS(
+            evento=TipoEventoCocina.PEDIDO_PAGADO,
+            data=pedido_dto,
+        )
+
+        background_tasks.add_task(
+            manager.broadcast,
+            evento.model_dump(mode="json"),
+            current_user.restaurante_id,
+        )
 
         return factura_nueva
 
@@ -241,6 +295,7 @@ def obtener_pedido(pedido_id: int,
 
 @router.patch("/detalles/{detalle_id}/estado", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_plato_estado(detalle_id: int,
+                         background_tasks: BackgroundTasks,
                          datos: DetalleEstadoUpdate,
                          current_user: TokenData = Depends(VerificarRol([RolesValidos.COCINERO, RolesValidos.DUENO])),
                          db: Session = Depends(get_session)):
@@ -278,13 +333,34 @@ def cambiar_plato_estado(detalle_id: int,
         db.refresh(obj_detalle)
         db.refresh(pedido)
 
-        return pedido
+        pedido_dto = PedidoRead.model_validate(pedido)
+
+        if pedido_dto.estado == EstadosValidosPedidos.LISTO:
+            tipo_evento = TipoEventoCocina.PEDIDO_LISTO
+        elif pedido_dto.estado == EstadosValidosPedidos.CANCELADO:
+            tipo_evento = TipoEventoCocina.PEDIDO_CANCELADO
+        else:
+            tipo_evento = TipoEventoCocina.PEDIDO_ACTUALIZADO
+
+        evento = EventoPedidoWS(
+            evento=tipo_evento,
+            data=pedido_dto,
+        )
+
+        background_tasks.add_task(
+            manager.broadcast,
+            evento.model_dump(mode="json"),
+            current_user.restaurante_id,
+        )
+
+        return pedido_dto
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al guardar en la base de datos")
 
 @router.patch("/{pedido_id}", response_model=PedidoRead, status_code=status.HTTP_200_OK)
 def cambiar_cabecera_pedido(pedido_id: int,
+                            background_tasks: BackgroundTasks,
                             pedido_in: PedidoUpdate,
                             current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO])),
                             db: Session = Depends(get_session)):
@@ -304,20 +380,24 @@ def cambiar_cabecera_pedido(pedido_id: int,
         )
 
     if pedido_in.estado:
+        if pedido_in.estado == EstadosValidosPedidos.PAGADO:
+            raise HTTPException(
+                status_code=400,
+                detail="Para cobrar el pedido utilice el módulo de facturación.",
+            )
+
         if pedido_in.estado == EstadosValidosPedidos.CANCELADO:
-            detalles = obj_pedido.detalles
-            for detalle in detalles:
+            for detalle in obj_pedido.detalles:
                 detalle.estado = EstadosValidosDetalles.CANCELADO
                 db.add(detalle)
-            obj_pedido.estado = pedido_in.estado
-        else:
-            obj_pedido.estado = pedido_in.estado
+
+        obj_pedido.estado = pedido_in.estado
 
     if pedido_in.mesero_id is not None:
         consulta_mesero = (select(Usuario)
                            .where(Usuario.id == pedido_in.mesero_id,
                                   Usuario.restaurante_id == current_user.restaurante_id,
-                                  Usuario.rol == 1))
+                                  Usuario.rol == RolesValidos.MESERO))
         obj_mesero = db.exec(consulta_mesero).first()
         if obj_mesero is None:
             raise HTTPException(status_code=404, detail="Mesero no encontrado")
@@ -337,7 +417,27 @@ def cambiar_cabecera_pedido(pedido_id: int,
         db.commit()
         db.refresh(obj_pedido)
 
-        return obj_pedido
+        pedido_dto = PedidoRead.model_validate(obj_pedido)
+
+        if pedido_dto.estado == EstadosValidosPedidos.LISTO:
+            tipo_evento = TipoEventoCocina.PEDIDO_LISTO
+        elif pedido_dto.estado == EstadosValidosPedidos.CANCELADO:
+            tipo_evento = TipoEventoCocina.PEDIDO_CANCELADO
+        else:
+            tipo_evento = TipoEventoCocina.PEDIDO_ACTUALIZADO
+
+        evento = EventoPedidoWS(
+            evento=tipo_evento,
+            data=pedido_dto,
+        )
+
+        background_tasks.add_task(
+            manager.broadcast,
+            evento.model_dump(mode="json"),
+            current_user.restaurante_id,
+        )
+
+        return pedido_dto
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al guardar los cambios en la base de datos")

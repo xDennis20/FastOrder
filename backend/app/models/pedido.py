@@ -76,6 +76,7 @@ class DetallePedidoCreate(SQLModel):
 
 class PedidoCreate(SQLModel):
     mesa_id: int
+    mesero_id: int
     detalles: list[DetallePedidoCreate]
 
 class DetalleEstadoUpdate(SQLModel):
@@ -93,6 +94,8 @@ class DetallePedidoRead(DetallePedidoBase):
     @computed_field
     @property
     def subtotal(self) -> Decimal:
+        if self.precio_unitario is None:
+            return Decimal("0.00")
         return self.cantidad * self.precio_unitario
 
 class PedidoRead(PedidoBase):

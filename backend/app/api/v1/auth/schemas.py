@@ -6,6 +6,7 @@ class Token(SQLModel):
     token_type: str = "bearer"
 
 class TokenData(SQLModel):
+    user_id: int
     email: str
     username: str
     restaurante_id: int

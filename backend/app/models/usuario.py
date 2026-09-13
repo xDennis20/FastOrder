@@ -25,11 +25,11 @@ def validar_complejidad_password(v: str | None) -> str | None:
     return v
 
 class RolesValidos(str, Enum):
-    SUPERADMIN = "superadmin"
-    DUENO = "dueno"
-    MESERO = "mesero"
-    COCINERO = "cocinero"
-    CAJA = "caja"
+    SUPERADMIN = "SUPERADMIN"
+    DUENO = "DUENO"
+    MESERO = "MESERO"
+    COCINERO = "COCINERO"
+    CAJA = "CAJA"
 
 class UsuarioBase(SQLModel):
     nombres: str = Field(default=None, max_length=120)
