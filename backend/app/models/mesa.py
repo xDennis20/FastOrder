@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Literal
 from enum import Enum
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
@@ -11,6 +11,7 @@ class Mesa(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
     numero_mesa: str = Field(nullable=False)
     estado: str = Field(default="Disponible", max_length=50)
+    activo: bool = Field(default=True, nullable=False)
 
     mesa_principal_id: int | None = Field(default=None, foreign_key="mesa.id",nullable=True)
     restaurante_id: int | None = Field(default=None, foreign_key="restaurante.id")
@@ -25,18 +26,25 @@ class Mesa(SQLModel, table=True):
     restaurante: Optional["Restaurante"] = Relationship(back_populates="mesas")
 
     __table_args__ = (
-        UniqueConstraint("restaurante_id", "numero_mesa", name="uq_mesas_restaurante"),
+        Index(
+            "uq_mesa_restaurante_numero_activa",
+            "restaurante_id",
+            "numero_mesa",
+            unique=True,
+            postgresql_where=(Field("activo") == True),
+        ),
     )
 
 class EstadosValidos(str,Enum):
-    disponible = "Disponible"
-    ocupado = "Ocupada"
-    reservada = "Reservada"
-    mantenimiento = "Mantenimiento / Fuera de servicio"
+    DISPONIBLE = "disponible"
+    OCUPADA = "ocupada"
+    RESERVADA = "reservada"
+    MANTENIMIENTO = "fuera_de_servicio"
 
 class MesaBase(SQLModel):
     numero_mesa: str = Field(max_length=3)
-    estado: EstadosValidos = EstadosValidos.disponible
+    estado: EstadosValidos = EstadosValidos.DISPONIBLE
+    activo: bool = Field(default=True)
     mesa_principal_id: int | None = Field(default=None)
 
 class MesaVincular(SQLModel):
@@ -45,8 +53,9 @@ class MesaVincular(SQLModel):
 class MesaEstadoUpdate(SQLModel):
     estado: EstadosValidos
 
-class MesaCreate(MesaBase):
-    pass
+class MesaCreate(SQLModel):
+    numero_mesa: str = Field(max_length=3)
+    estado: Literal[EstadosValidos.DISPONIBLE, EstadosValidos.MANTENIMIENTO] = EstadosValidos.DISPONIBLE
 
 class MesaRead(MesaBase):
     id: int

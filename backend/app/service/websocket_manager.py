@@ -1,27 +1,29 @@
+from collections import defaultdict
 from fastapi import WebSocket, WebSocketDisconnect
+
+from app.models.websocket import CanalWS
 
 class ConnectionManager:
     def __init__(self):
-        self.conexiones: dict[int, list[WebSocket]] = {}
+        self.conexiones_activas: defaultdict[tuple[int, CanalWS], list[WebSocket]] = defaultdict(list)
 
-    async def connect(self, websocket: WebSocket, restaurante_id: int):
+    async def connect(self, websocket: WebSocket, restaurante_id: int, canal: CanalWS):
         await websocket.accept()
-        if restaurante_id not in self.conexiones:
-            self.conexiones[restaurante_id] = []
-        self.conexiones[restaurante_id].append(websocket)
+        self.conexiones_activas[(restaurante_id, canal)].append(websocket)
 
-    def disconnect(self, websocket: WebSocket, restaurante_id: int):
-        if restaurante_id in self.conexiones:
-            if websocket in self.conexiones[restaurante_id]:
-                self.conexiones[restaurante_id].remove(websocket)
-            if not self.conexiones[restaurante_id]:
-                del self.conexiones[restaurante_id]
+    def disconnect(self, websocket: WebSocket, restaurante_id: int, canal: CanalWS):
+        clave = (restaurante_id, canal)
 
-    async def broadcast(self, mensaje: dict, restaurante_id: int):
-        for conexion in self.conexiones.get(restaurante_id, []).copy():
+        if clave in self.conexiones_activas and websocket in self.conexiones_activas[clave]:
+            self.conexiones_activas[clave].remove(websocket)
+            if not self.conexiones_activas[clave]:
+                del self.conexiones_activas[clave]
+
+    async def broadcast(self, mensaje: dict, restaurante_id: int, canal: CanalWS):
+        for conexion in self.conexiones_activas.get((restaurante_id, canal), []).copy():
             try:
                 await conexion.send_json(mensaje)
             except (WebSocketDisconnect, RuntimeError):
-                self.disconnect(conexion, restaurante_id)
+                self.disconnect(conexion, restaurante_id, canal)
 
 manager = ConnectionManager()

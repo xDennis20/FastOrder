@@ -7,7 +7,7 @@ from sqlmodel import Session, select, func
 from sqlalchemy.exc import SQLAlchemyError
 from app.api.deps import VerificarRol
 from app.core.database import get_session
-from app.models.mesa import Mesa
+from app.models.mesa import Mesa, EstadosValidos, MesaRead
 from app.api.v1.auth.schemas import TokenData
 from app.models.websocket import EventoPedidoWS, TipoEventoCocina
 from app.models.pedido import (Pedido, DetallePedido, PedidoCreate, PedidoPagination,
@@ -17,6 +17,8 @@ from app.models.plato import Plato
 from app.models.usuario import Usuario, RolesValidos
 from app.models.factura import (FacturaCreate, Factura, FacturaRead)
 from app.service.websocket_manager import manager
+from app.models.websocket import CanalWS
+from models.websocket import EventoMesaWS, TipoEventoMesas
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
 
@@ -33,6 +35,23 @@ def crear_pedido(
             detail="El pedido debe contener al menos un plato."
         )
 
+    consulta_mesa = (select(Mesa)
+                     .where(Mesa.restaurante_id == current_user.restaurante_id,
+                            Mesa.id == pedido_in.mesa_id,
+                            Mesa.activo == True,
+                            Mesa.estado != EstadosValidos.MANTENIMIENTO))
+
+    mesa_obj = db.exec(consulta_mesa).first()
+
+    if mesa_obj is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Mesa no existente o se encuentra en mantenimiento")
+
+    if mesa_obj.mesa_principal_id is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No se puede colocar pedidos a una mesa secundaria")
+
+
     if current_user.rol == RolesValidos.MESERO:
         mesero_asignado_id = current_user.user_id
     else:
@@ -40,34 +59,62 @@ def crear_pedido(
             pedido_in.mesero_id if pedido_in.mesero_id else current_user.user_id
         )
 
+    platos_dict: dict[int, Plato] = {}
+
+    for item in pedido_in.detalles:
+        consulta_plato = (select(Plato)
+                          .where(Plato.restaurante_id == current_user.restaurante_id,
+                                 Plato.id == item.plato_id,
+                                 Plato.activo == True))
+        plato_obj = db.exec(consulta_plato).first()
+
+        if not plato_obj:
+            raise HTTPException(
+                status_code=404,
+                detail=f"El plato con ID {item.plato_id} no existe",
+            )
+
+        platos_dict[item.plato_id] = plato_obj
+
     try:
         nuevo_pedido = Pedido(
             mesa_id=pedido_in.mesa_id,
             mesero_id=mesero_asignado_id,
             restaurante_id=current_user.restaurante_id,
-            estado="Pendiente"
+            estado = EstadosValidosPedidos.PENDIENTE
         )
+
         db.add(nuevo_pedido)
         db.flush()
 
         for item in pedido_in.detalles:
-            plato = db.get(Plato, item.plato_id)
-
-            if not plato:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"El plato con ID {item.plato_id} no existe",
-                )
-
+            plato = platos_dict[item.plato_id]
             detalle_db = DetallePedido(
-                pedido_id=nuevo_pedido.id,
-                plato_id=item.plato_id,
-                cantidad=item.cantidad,
-                notas=item.notas,
-                estado="Pendiente",
-                precio_unitario= plato.precio
-            )
+                    pedido_id=nuevo_pedido.id,
+                    plato_id=plato.id,
+                    cantidad=item.cantidad,
+                    notas=item.notas,
+                    estado=EstadosValidosDetalles.PENDIENTE,
+                    precio_unitario= plato.precio
+                )
             db.add(detalle_db)
+
+        cambio_estado_mesa = False
+        mesas_obj = []
+
+        if mesa_obj.estado in [EstadosValidos.DISPONIBLE, EstadosValidos.RESERVADA]:
+            mesa_obj.estado = EstadosValidos.OCUPADA
+            cambio_estado_mesa = True
+            consulta_mesas_secundarias = (select(Mesa)
+                                          .where(Mesa.restaurante_id == current_user.restaurante_id,
+                                                 Mesa.activo == True,
+                                                 Mesa.mesa_principal_id == pedido_in.mesa_id))
+            mesas_obj = db.exec(consulta_mesas_secundarias).all()
+            if mesas_obj:
+                for mesa in mesas_obj:
+                    mesa.estado = EstadosValidos.OCUPADA
+                    db.add(mesa)
+            db.add(mesa_obj)
 
         db.commit()
         db.refresh(nuevo_pedido)
@@ -83,7 +130,35 @@ def crear_pedido(
             manager.broadcast,
             evento.model_dump(mode="json"),
             current_user.restaurante_id,
+            CanalWS.COCINA,
         )
+
+        if cambio_estado_mesa:
+            mesa_dto = MesaRead.model_validate(mesa_obj)
+            evento = EventoMesaWS(
+                evento=TipoEventoMesas.MESA_ACTUALIZADA,
+                data=mesa_dto
+            )
+            background_tasks.add_task(
+                manager.broadcast,
+                evento.model_dump(mode="json"),
+                current_user.restaurante_id,
+                CanalWS.MESAS,
+            )
+
+            if mesas_obj:
+                for mesa in mesas_obj:
+                    mesa_dto = MesaRead.model_validate(mesa)
+                    evento = EventoMesaWS(
+                        evento=TipoEventoMesas.MESA_ACTUALIZADA,
+                        data=mesa_dto
+                    )
+                    background_tasks.add_task(
+                        manager.broadcast,
+                        evento.model_dump(mode="json"),
+                        current_user.restaurante_id,
+                        CanalWS.MESAS,
+                    )
 
         return {
             "mensaje": "Pedido registrado con éxito. Notificación enviada a cocina.",
@@ -156,9 +231,10 @@ def agregar_platos(pedido_id: int,
         )
 
         background_tasks.add_task(
-        manager.broadcast,
-        evento.model_dump(mode="json"),
-        current_user.restaurante_id,
+            manager.broadcast,
+            evento.model_dump(mode="json"),
+            current_user.restaurante_id,
+            CanalWS.COCINA,
         )
 
         return pedido_dto
@@ -223,6 +299,7 @@ def cobrar_pedido(pedido_id: int,
             manager.broadcast,
             evento.model_dump(mode="json"),
             current_user.restaurante_id,
+            CanalWS.COCINA,
         )
 
         return factura_nueva
@@ -351,6 +428,7 @@ def cambiar_plato_estado(detalle_id: int,
             manager.broadcast,
             evento.model_dump(mode="json"),
             current_user.restaurante_id,
+            CanalWS.COCINA,
         )
 
         return pedido_dto
@@ -435,6 +513,7 @@ def cambiar_cabecera_pedido(pedido_id: int,
             manager.broadcast,
             evento.model_dump(mode="json"),
             current_user.restaurante_id,
+            CanalWS.COCINA,
         )
 
         return pedido_dto
