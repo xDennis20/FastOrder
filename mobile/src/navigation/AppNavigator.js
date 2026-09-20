@@ -8,6 +8,7 @@ import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import PedidosScreen from '../screens/PedidosScreen';
 import PerfilScreen from '../screens/PerfilScreen';
+import CobroScreen from '../screens/CobroScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -51,6 +52,11 @@ export default function AppNavigator() {
             name="Pedidos"
             component={PedidosScreen}
             options={{ title: 'Cocina / Pedidos' }}
+          />
+          <Stack.Screen
+            name="Cobro"
+            component={CobroScreen}
+            options={{ title: 'Cobro de Mesa' }}
           />
           <Stack.Screen
             name="Perfil"

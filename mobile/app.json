@@ -13,20 +13,41 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Esta aplicación requiere acceso a la cámara para capturar comprobantes de transferencia bancaria al momento de registrar el pago de la comanda."
+      }
     },
     "android": {
+      "package": "com.fastorder.terminal",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-status-bar"
-    ]
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Esta aplicación requiere acceso a la cámara para capturar comprobantes de transferencia bancaria al momento de registrar el pago de la comanda."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f0ac3d9f-3e57-4d4a-91fb-fdaf6a17d114"
+      }
+    }
   }
 }

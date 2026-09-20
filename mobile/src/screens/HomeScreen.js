@@ -51,6 +51,22 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.actionLink}>ABRIR PANTALLA 2 →</Text>
       </TouchableOpacity>
 
+      {/* NUEVO MÓDULO: Cobro de Comanda con Cámara Nativa */}
+      <TouchableOpacity
+        style={styles.actionCard}
+        onPress={() => navigation.navigate('Cobro', { mesaNumero: '4', total: 24.50 })}
+        activeOpacity={0.8}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.actionTitle}>Caja y Cierre de Comanda</Text>
+          <Text style={styles.badgeGreen}>CÁMARA</Text>
+        </View>
+        <Text style={styles.actionDescription}>
+          Validar pago por transferencia, capturar fotografía del comprobante bancario y liberar la mesa.
+        </Text>
+        <Text style={styles.actionLink}>ABRIR MÓDULO DE COBRO →</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.actionCard}
         onPress={() => navigation.navigate('Perfil')}
@@ -162,6 +178,15 @@ const styles = StyleSheet.create({
   },
   badgeOrange: {
     backgroundColor: '#ea580c',
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  badgeGreen: {
+    backgroundColor: '#15803d',
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '800',

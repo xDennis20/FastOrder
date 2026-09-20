@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Linking } from 'react-native';
+import {
+  configurarNotificaciones,
+  dispararNotificacionPedido,
+} from '../services/notificaciones';
 
 const COMANDAS_INICIALES = [
   {
@@ -38,18 +42,58 @@ const COMANDAS_INICIALES = [
 
 export default function PedidosScreen({ navigation }) {
   const [pedidos, setPedidos] = useState(COMANDAS_INICIALES);
+  const [permisoNotificaciones, setPermisoNotificaciones] = useState(false);
 
-  const cambiarEstado = (id) => {
+  // Inicializar canal y solicitar permisos nativos al montar la pantalla
+  useEffect(() => {
+    async function inicializar() {
+      const concedido = await configurarNotificaciones();
+      setPermisoNotificaciones(concedido);
+    }
+    inicializar();
+  }, []);
+
+  const cambiarEstado = async (id) => {
+    let pedidoAfectado = null;
+    let nuevoEstado = '';
+
     setPedidos((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              estado: item.estado === 'LISTO' ? 'EN PREPARACIÓN' : 'LISTO',
-            }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          nuevoEstado = item.estado === 'LISTO' ? 'EN PREPARACIÓN' : 'LISTO';
+          pedidoAfectado = { ...item, estado: nuevoEstado };
+          return pedidoAfectado;
+        }
+        return item;
+      })
     );
+
+    // Disparar notificación nativa cuando la cocina marca el plato como "LISTO"
+    if (nuevoEstado === 'LISTO' && pedidoAfectado) {
+      if (permisoNotificaciones) {
+        await dispararNotificacionPedido({
+          titulo: `🍽️ ¡Plato Listo! - ${pedidoAfectado.mesa}`,
+          cuerpo: `La orden #${pedidoAfectado.id} está lista en barra para ser servida al comensal.`,
+          datos: { pedidoId: pedidoAfectado.id, mesa: pedidoAfectado.mesa },
+        });
+      } else {
+        // Degradación: si las notificaciones están bloqueadas, la app no se rompe y notifica en pantalla
+        Alert.alert(
+          'Comanda Actualizada (Modo Visual)',
+          `Orden #${pedidoAfectado.id} despachada.\n\nLas alertas sonoras están desactivadas en tu dispositivo. ¿Deseas activarlas en la configuración?`,
+          [
+            {
+              text: 'Continuar en modo visual',
+              style: 'cancel',
+            },
+            {
+              text: 'Ir a Ajustes',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
+      }
+    }
   };
 
   const renderItem = ({ item }) => {
@@ -106,6 +150,15 @@ export default function PedidosScreen({ navigation }) {
         <Text style={styles.subtitle}>Toca una comanda para alternar su estado</Text>
       </View>
 
+      {/* Degradación visual: Banner si los permisos de notificación no están concedidos */}
+      {!permisoNotificaciones && (
+        <View style={styles.bannerAviso}>
+          <Text style={styles.textoBanner}>
+            ⚠️ Notificaciones desactivadas. Las alertas sonoras de cocina no sonarán.
+          </Text>
+        </View>
+      )}
+
       <FlatList
         data={pedidos}
         keyExtractor={(item) => item.id}
@@ -135,6 +188,21 @@ const styles = StyleSheet.create({
     color: '#78716c',
     fontSize: 12,
     marginTop: 4,
+  },
+  bannerAviso: {
+    backgroundColor: '#3b2914',
+    marginHorizontal: 20,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d97706',
+  },
+  textoBanner: {
+    color: '#fbbf24',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   listContent: {
     padding: 20,
