@@ -75,7 +75,7 @@ class DetallePedidoCreate(SQLModel):
     notas: str | None = None
 
 class PedidoCreate(SQLModel):
-    mesa_id: int
+    mesa_id: int | None = None
     mesero_id: int
     detalles: list[DetallePedidoCreate]
 
