@@ -59,12 +59,14 @@ def obtener_categorias(current_user: TokenData = Depends(VerificarRol([RolesVali
     if activo:
         statement = statement.where(Categoria.activo == True)
 
-    categoria_items = db.exec(statement).all()
+    categoria_db = db.exec(statement).all()
 
-    CACHE_CATEGORIAS[clave_cache] = {"items": categoria_items,
-                                                     "expira_en": time.time() + CACHE_DURATION_SECONDS}
+    categoria_dtos = [CategoriaWithPlatos.model_validate(c) for c in categoria_db]
 
-    return categoria_items
+    CACHE_CATEGORIAS[clave_cache] = {"items": categoria_dtos,
+                                    "expira_en": time.time() + CACHE_DURATION_SECONDS}
+
+    return categoria_dtos
 
 @router.get("/{categoria_id}", response_model=CategoriaWithPlatos)
 def obtener_categoria(categoria_id: int,

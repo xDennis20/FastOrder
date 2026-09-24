@@ -10,19 +10,23 @@ from app.models.restaurante import Restaurante
 from app.models.usuario import RolesValidos
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+DUMMY_HASH = "$2b$12$e8Yn5h8/jL8aU8yV1t1pueZk0M0h6f9uO2u2Z4m8xG9m4b3q5a1a2"
 
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_session)):
     constr = select(Usuario).where(Usuario.correo == form_data.username)
     usuario_obj: Usuario = db.exec(constr).first()
 
-    password_correcta = False
+    password_bytes = form_data.password.encode("utf-8")[:72]
 
     if usuario_obj:
         password_correcta = bcrypt.checkpw(
-            form_data.password.encode("utf-8")[:72],
+            password_bytes,
             usuario_obj.hashed_password.encode("utf-8")
         )
+    else:
+        bcrypt.checkpw(password_bytes, DUMMY_HASH.encode("utf-8"))
+        password_correcta = False
 
     if not usuario_obj or not password_correcta:
         raise HTTPException(

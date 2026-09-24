@@ -13,6 +13,7 @@ from app.api.deps import get_session
 from app.models.factura import Factura
 from app.models.pedido import Pedido
 from app.models.factura import TiposPagosValidos
+from models.pedido import DetallePedido
 
 router = APIRouter(prefix="/admin/estadisticas", tags=["estadisticas"])
 
@@ -46,7 +47,9 @@ def historial_ventas(fecha_inicio: date | None = None,
         select(Factura)
         .where(*condiciones)
         .options(
-            selectinload(Factura.pedido).selectinload(Pedido.detalles)
+            selectinload(Factura.pedido)
+            .selectinload(Pedido.detalles)
+            .joinedload(DetallePedido.plato)
         )
         .order_by(Factura.fecha_creacion.desc())
         .offset(offset)

@@ -38,7 +38,9 @@ def crear_pedido(
                          .where(Mesa.restaurante_id == current_user.restaurante_id,
                                 Mesa.id == pedido_in.mesa_id,
                                 Mesa.activo == True,
-                                Mesa.estado != EstadosValidos.MANTENIMIENTO))
+                                Mesa.estado != EstadosValidos.MANTENIMIENTO)
+                                .with_for_update()
+                         )
 
         mesa_obj = db.exec(consulta_mesa).first()
 
@@ -260,7 +262,9 @@ def cobrar_pedido(pedido_id: int,
                   db: Session = Depends(get_session)):
     consulta_pedido = (select(Pedido)
                        .where(Pedido.id == pedido_id,
-                              Pedido.restaurante_id == current_user.restaurante_id))
+                              Pedido.restaurante_id == current_user.restaurante_id)
+                       .with_for_update()
+                       )
 
     obj_pedido = db.exec(consulta_pedido).first()
 
@@ -288,6 +292,7 @@ def cobrar_pedido(pedido_id: int,
         factura_nueva = Factura(pedido_id=pedido_id,
                 tipo_pago=factura_in.tipo_pago,
                 comprobante_img_url=factura_in.comprobante_img_url,
+                restaurante_id=current_user.restaurante_id,
                 total=total)
 
         obj_pedido.estado = EstadosValidosPedidos.PAGADO
@@ -296,20 +301,32 @@ def cobrar_pedido(pedido_id: int,
         db.add(obj_pedido)
         mesas_secundarias = []
         if obj_pedido.mesa_id:
-            consulta_mesa_secundarias = (select(Mesa)
-                                         .where(Mesa.restaurante_id == current_user.restaurante_id,
-                                                Mesa.mesa_principal_id == obj_pedido.mesa_id,
-                                                Mesa.activo == True))
+            consulta_mesa_principal = (
+                select(Mesa)
+                .where(Mesa.id == obj_pedido.mesa_id)
+                .with_for_update()
+            )
+            mesa_principal = db.exec(consulta_mesa_principal).first()
 
+            if mesa_principal:
+                mesa_principal.estado = EstadosValidos.DISPONIBLE
+                db.add(mesa_principal)
+
+            consulta_mesa_secundarias = (
+                select(Mesa)
+                .where(
+                    Mesa.restaurante_id == current_user.restaurante_id,
+                    Mesa.mesa_principal_id == obj_pedido.mesa_id,
+                    Mesa.activo == True
+                )
+                .with_for_update()
+            )
             mesas_secundarias = db.exec(consulta_mesa_secundarias).all()
-            mesa_principal = obj_pedido.mesa
-            mesa_principal.estado = EstadosValidos.DISPONIBLE
-            db.add(mesa_principal)
-            if mesas_secundarias:
-                for mesa in mesas_secundarias:
-                    mesa.estado = EstadosValidos.DISPONIBLE
-                    mesa.mesa_principal_id = None
-                    db.add(mesa)
+
+            for mesa in mesas_secundarias:
+                mesa.estado = EstadosValidos.DISPONIBLE
+                mesa.mesa_principal_id = None
+                db.add(mesa)
 
         db.commit()
         db.refresh(factura_nueva)
@@ -392,7 +409,7 @@ def obtener_pedidos(estado: list[EstadosValidosPedidos] | None = Query(default=N
 
     items = db.exec(consulta.order_by(Pedido.fecha_creacion.desc()).limit(limit).offset(offset)).all()
     total_paginas = math.ceil(total_pedidos / limit) if total_pedidos > 0 else 0
-    pagina_actual = (total_paginas // limit) + 1
+    pagina_actual = page
     tiene_anterior = pagina_actual > 1
     tiene_siguiente = pagina_actual < total_paginas
 
@@ -496,7 +513,9 @@ def cambiar_cabecera_pedido(pedido_id: int,
                             pedido_in: PedidoUpdate,
                             current_user: TokenData = Depends(VerificarRol([RolesValidos.MESERO, RolesValidos.DUENO])),
                             db: Session = Depends(get_session)):
-    consulta = select(Pedido).where(Pedido.id == pedido_id, Pedido.restaurante_id == current_user.restaurante_id)
+    consulta = (select(Pedido)
+                .where(Pedido.id == pedido_id,
+                       Pedido.restaurante_id == current_user.restaurante_id))
     obj_pedido = db.exec(consulta).first()
     if obj_pedido is None:
         raise HTTPException(
@@ -535,14 +554,67 @@ def cambiar_cabecera_pedido(pedido_id: int,
             raise HTTPException(status_code=404, detail="Mesero no encontrado")
         obj_pedido.mesero_id = obj_mesero.id
 
-    if pedido_in.mesa_id is not None:
+    if pedido_in.mesa_id is not None and pedido_in.mesa_id != obj_pedido.mesa_id:
+        mesa_anterior = obj_pedido.mesa_id
+
         consulta_mesa = (select(Mesa)
                          .where(Mesa.id == pedido_in.mesa_id,
-                                           Mesa.restaurante_id == current_user.restaurante_id))
-        obj_mesa = db.exec(consulta_mesa).first()
-        if obj_mesa is None:
-            raise HTTPException(status_code=404, detail="Mesa no encontrada")
-        obj_pedido.mesa_id = obj_mesa.id
+                                            Mesa.restaurante_id == current_user.restaurante_id,
+                                            Mesa.activo == True))
+        obj_nueva_mesa = db.exec(consulta_mesa).first()
+        if obj_nueva_mesa is None:
+            raise HTTPException(status_code=404,
+                                detail="Mesa no encontrada o no activa")
+
+        if obj_nueva_mesa.mesa_principal_id is not None:
+            raise HTTPException(status_code=400,
+                                detail="Esta mesa esta vinculada a una mesa principal. Por favor coloque la mesa principal")
+
+        if obj_nueva_mesa.estado == EstadosValidos.MANTENIMIENTO:
+            raise HTTPException(status_code=400,
+                                detail= "Esta mesa esta fuera de servicio/Mantenimiento")
+
+        obj_pedido.mesa_id = obj_nueva_mesa.id
+        if obj_nueva_mesa.estado != EstadosValidos.OCUPADA:
+            obj_nueva_mesa.estado = EstadosValidos.OCUPADA
+            db.add(obj_nueva_mesa)
+
+        consulta_mesa_secundarias = (select(Mesa)
+                                     .where(Mesa.mesa_principal_id == pedido_in.mesa_id,
+                                            Mesa.activo == True,
+                                            Mesa.restaurante_id == current_user.restaurante_id))
+        mesas_secundarias_objs = db.exec(consulta_mesa_secundarias).all()
+
+        if mesas_secundarias_objs:
+            for mesa in mesas_secundarias_objs:
+                if mesa.estado != EstadosValidos.OCUPADA:
+                    mesa.estado = EstadosValidos.OCUPADA
+                    db.add(mesa)
+
+        if mesa_anterior is not None:
+            consulta_pedidos_activos = (select(Pedido)
+                                        .where(Pedido.restaurante_id == current_user.restaurante_id,
+                                               Pedido.id != obj_pedido.id,
+                                               Pedido.mesa_id == mesa_anterior,
+                                               Pedido.estado.not_in([EstadosValidosPedidos.PAGADO, EstadosValidosPedidos.CANCELADO])))
+            pedido_activo = db.exec(consulta_pedidos_activos).first()
+
+            if pedido_activo is None:
+                consulta_mesa_anterior = (select(Mesa)
+                                          .where(Mesa.restaurante_id == current_user.restaurante_id,
+                                                 Mesa.id == mesa_anterior))
+                mesa_anterior_obj = db.exec(consulta_mesa_anterior).first()
+                if mesa_anterior_obj:
+                    mesa_anterior_obj.estado = EstadosValidos.DISPONIBLE
+                    mesas_secundarias_anterior = db.exec(select(Mesa)
+                                                         .where(Mesa.restaurante_id == current_user.restaurante_id,
+                                                                Mesa.mesa_principal_id == mesa_anterior,
+                                                                Mesa.activo == True)).all()
+
+                    if mesas_secundarias_anterior:
+                        for mesa in mesas_secundarias_anterior:
+                            mesa.estado = EstadosValidos.DISPONIBLE
+                            db.add(mesa)
 
     try:
         db.add(obj_pedido)

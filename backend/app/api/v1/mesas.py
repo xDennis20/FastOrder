@@ -64,7 +64,11 @@ def vincular_mesas(mesa_id: int,
                current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO]))):
     mesa_principal_id = mesa_principal.mesa_principal_id
     restaurante_id = current_user.restaurante_id
-    consulta_mesa_modificar = select(Mesa).where(Mesa.restaurante_id == restaurante_id, Mesa.id == mesa_id)
+    consulta_mesa_modificar = (select(Mesa)
+                               .where(Mesa.restaurante_id == restaurante_id,
+                                      Mesa.id == mesa_id)
+                                      .with_for_update()
+                               )
     mesa_modificar = db.exec(consulta_mesa_modificar).first()
 
     if mesa_modificar is None:
@@ -105,7 +109,9 @@ def vincular_mesas(mesa_id: int,
 
         consulta_mesas_dependientes = (select(Mesa)
                                        .where(Mesa.restaurante_id == restaurante_id,
-                                                         Mesa.mesa_principal_id == mesa_id))
+                                                         Mesa.mesa_principal_id == mesa_id)
+                                       .with_for_update()
+                                       )
         mesa_dependientes = db.exec(consulta_mesas_dependientes).first()
 
         if mesa_dependientes is not None:
@@ -115,6 +121,8 @@ def vincular_mesas(mesa_id: int,
             raise HTTPException(status_code=400, detail="No se puede vincular a una mesa que ya es secundaria. Debes vincularla a la mesa principal raíz")
 
         mesa_modificar.estado = mesa_principal_obj.estado
+
+        tipo_evento = TipoEventoMesas.MESAS_VINCULADAS
 
     else:
         if mesa_modificar.mesa_principal_id is None:
@@ -128,7 +136,9 @@ def vincular_mesas(mesa_id: int,
                                        Pedido.mesa_id == mesa_id,
                                        Pedido.mesa_id == mesa_modificar.mesa_principal_id
                                     ),
-                                   Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO])))
+                                   Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]))
+                            .with_for_update()
+                            )
         pedidos_mesa_modificar = db.exec(consulta_pedidos).first()
         if pedidos_mesa_modificar is not None:
             raise HTTPException(status_code=400,
@@ -168,7 +178,11 @@ def mesa_cambiar_estado(mesa_id: int,
                         estado_in: MesaEstadoUpdate,
                         current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO])),
                         db: Session = Depends(get_session)):
-    consulta_mesa = select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id, Mesa.id == mesa_id)
+    consulta_mesa = (select(Mesa)
+                     .where(Mesa.restaurante_id == current_user.restaurante_id,
+                            Mesa.id == mesa_id)
+                            .with_for_update()
+                     )
     mesa_obj = db.exec(consulta_mesa).first()
 
     if mesa_obj is None:
@@ -202,7 +216,9 @@ def mesa_cambiar_estado(mesa_id: int,
         consulta_pedidos_activos = (select(Pedido)
                                     .where(Pedido.restaurante_id == current_user.restaurante_id,
                                                         Pedido.mesa_id.in_(mesas_ids),
-                                                        Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO])))
+                                                        Pedido.estado.not_in([EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO]))
+                                    .with_for_update()
+                                    )
         pedido_activo = db.exec(consulta_pedidos_activos).first()
 
         if pedido_activo is not None:
@@ -292,7 +308,9 @@ def eliminar_mesa(mesa_id: int,
     consulta = (select(Mesa)
                 .where(Mesa.restaurante_id == current_user.restaurante_id,
                        Mesa.activo == True,
-                       Mesa.id == mesa_id))
+                       Mesa.id == mesa_id)
+                       .with_for_update()
+                )
     mesa_obj: Mesa | None = db.exec(consulta).first()
 
     if mesa_obj is None:

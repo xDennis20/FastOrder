@@ -1,16 +1,22 @@
 from typing import TYPE_CHECKING, Optional, Literal
 from enum import Enum
-from sqlalchemy import Index
+from sqlalchemy import Index, text
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from app.models.pedido import Pedido
     from app.models.restaurante import Restaurante
 
+class EstadosValidos(str,Enum):
+    DISPONIBLE = "disponible"
+    OCUPADA = "ocupada"
+    RESERVADA = "reservada"
+    MANTENIMIENTO = "fuera_de_servicio"
+
 class Mesa(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
     numero_mesa: str = Field(nullable=False)
-    estado: str = Field(default="Disponible", max_length=50)
+    estado: EstadosValidos = Field(default=EstadosValidos.DISPONIBLE, max_length=50)
     activo: bool = Field(default=True, nullable=False)
 
     mesa_principal_id: int | None = Field(default=None, foreign_key="mesa.id",nullable=True)
@@ -31,15 +37,9 @@ class Mesa(SQLModel, table=True):
             "restaurante_id",
             "numero_mesa",
             unique=True,
-            postgresql_where=(Field("activo") == True),
+            postgresql_where=(text("activo IS TRUE")),
         ),
     )
-
-class EstadosValidos(str,Enum):
-    DISPONIBLE = "disponible"
-    OCUPADA = "ocupada"
-    RESERVADA = "reservada"
-    MANTENIMIENTO = "fuera_de_servicio"
 
 class MesaBase(SQLModel):
     numero_mesa: str = Field(max_length=3)

@@ -8,11 +8,20 @@ from app.models.usuario import (UsuarioRead, UsuarioCreate, Usuario,
                                 RolesValidos, UsuarioUpdate)
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
+ROLES_PERMITIDOS_DUENO = {RolesValidos.MESERO,
+                          RolesValidos.COCINERO,
+                          RolesValidos.CAJA}
 
 @router.post("/", response_model=UsuarioRead, status_code=status.HTTP_201_CREATED)
 def registrar_usuario(usuario_in: UsuarioCreate,
                       db: Session = Depends(get_session),
                       current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO]))):
+    if usuario_in.rol not in ROLES_PERMITIDOS_DUENO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene autorización para asignar este rol."
+        )
+
     statement_correo = select(Usuario).where(Usuario.correo == usuario_in.correo)
     usuario_existente_correo = db.exec(statement_correo).first()
     if usuario_existente_correo:
@@ -52,7 +61,7 @@ def obtener_usuarios(activo: bool | None = Query(default=None, description="Filt
     consulta_usuarios = (select(Usuario)
                          .where(Usuario.restaurante_id == current_user.restaurante_id))
     if activo is not None:
-        consulta_usuarios = consulta_usuarios.where(Usuario.estado == activo)
+        consulta_usuarios = consulta_usuarios.where(Usuario.activo == activo)
 
     consulta_usuarios = consulta_usuarios.order_by(Usuario.nombres.asc())
     obj_usuarios = db.exec(consulta_usuarios).all()
@@ -77,6 +86,11 @@ def modificar_usuario(usuario_id: int,
                       usuario_in: UsuarioUpdate,
                       current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO])),
                       db: Session = Depends(get_session)):
+    if usuario_in.rol not in ROLES_PERMITIDOS_DUENO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene autorización para asignar este rol."
+        )
     consulta_usuario = (select(Usuario)
                         .where(Usuario.id == usuario_id,
                                Usuario.restaurante_id == current_user.restaurante_id))

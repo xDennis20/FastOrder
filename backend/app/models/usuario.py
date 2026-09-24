@@ -59,7 +59,7 @@ class UsuarioRead(UsuarioBase):
 class UsuarioUpdate(SQLModel):
     nombres: str | None = None
     apellidos: str | None = None
-    estado: bool | None = None
+    activo: bool | None = None
     password: str | None = Field(default=None, min_length=6)
     telefono: str | None = Field(default=None, max_length=10)
     correo: EmailStr | None = Field(default=None, max_length=200)
@@ -72,6 +72,7 @@ class UsuarioUpdate(SQLModel):
 
 class Usuario(UsuarioBase, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
+    correo: EmailStr = Field(nullable=False, unique=True, index=True)
     hashed_password: str = Field(nullable=False)
 
     pedidos: list["Pedido"] = Relationship(back_populates="mesero")
