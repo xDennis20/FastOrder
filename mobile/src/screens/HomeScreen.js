@@ -81,6 +81,21 @@ export default function HomeScreen({ navigation }) {
         </Text>
         <Text style={styles.actionLink}>ABRIR PANTALLA 3 →</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.actionCard}
+        onPress={() => navigation.navigate('TomarPedido')}
+        activeOpacity={0.8}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.actionTitle}>Tomar Pedido (Carta Digital)</Text>
+          <Text style={styles.badgeOrange}>MESERO</Text>
+        </View>
+        <Text style={styles.actionDescription}>
+          Explorar platos por categoría, seleccionar mesa y despachar pedidos a cocina.
+        </Text>
+        <Text style={styles.actionLink}>ABRIR CARTA Y COMANDAS →</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }

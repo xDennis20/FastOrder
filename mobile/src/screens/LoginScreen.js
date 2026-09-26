@@ -7,29 +7,46 @@ import {
   ActivityIndicator,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform
+  Platform,
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { loginRequest } from '../services/api';
 
+function decodificarToken(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.warn('No se pudo decodificar el token, usando datos por defecto:', error);
+    return {};
+  }
+}
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errorLocal, setErrorLocal] = useState(''); // Errores de validación del formulario
+  const [errorLocal, setErrorLocal] = useState('');
   const [cargando, setCargando] = useState(false);
 
   const { iniciarSesion } = useContext(AuthContext);
 
   const handleLogin = async () => {
-    setErrorLocal(''); // Limpiar errores previos
+    setErrorLocal('');
 
-    // 1. Validación de campos obligatorios
+    // 1. Validar que no haya campos vacíos
     if (!email.trim() || !password.trim()) {
       setErrorLocal('Todos los campos son obligatorios.');
       return;
     }
 
-    // 2. Validación de formato de correo (Regex básico)
+    // 2. Validar formato de correo
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email)) {
       setErrorLocal('Ingresa un formato de correo electrónico válido.');
@@ -38,14 +55,22 @@ export default function LoginScreen() {
 
     setCargando(true);
     try {
-      // Llamada al backend (FastAPI)
+      // 3. Llamar al backend de FastAPI
       const data = await loginRequest(email, password);
 
-      // Si el backend responde 200 OK, guardamos el token y datos básicos
-      await iniciarSesion(data.access_token, { email: email.toLowerCase() });
+      // 4. Extraer el rol, nombre y restaurante desde el token
+      const datosToken = decodificarToken(data.access_token);
+
+      // 5. Guardar la sesión completa en el teléfono
+      await iniciarSesion(data.access_token, {
+        email: datosToken.email || email.toLowerCase(),
+        nombre: datosToken.username || 'Operador',
+        rol: datosToken.rol || 'STAFF',
+        restaurante_id: datosToken.restaurante_id || null,
+        user_id: datosToken.user_id || null,
+      });
 
     } catch (error) {
-      // 3. Manejo de errores del servidor (Credenciales incorrectas)
       setErrorLocal(error.message);
     } finally {
       setCargando(false);
@@ -61,7 +86,7 @@ export default function LoginScreen() {
         <Text style={styles.logo}>FastOrder</Text>
         <Text style={styles.subtitle}>Terminal del Sistema</Text>
 
-        {/* Caja de errores dinámicos */}
+        {/* Mensaje de error si las credenciales fallan */}
         {errorLocal ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{errorLocal}</Text>
@@ -108,7 +133,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212', // Fondo oscuro tipo terminal KDS
+    backgroundColor: '#121212',
     justifyContent: 'center',
   },
   formContainer: {
@@ -117,7 +142,7 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 42,
     fontWeight: '900',
-    color: '#ea580c', // Naranja vibrante
+    color: '#ea580c',
     textAlign: 'center',
     letterSpacing: -1,
   },
@@ -147,7 +172,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#ea580c', // Botón principal naranja
+    backgroundColor: '#ea580c',
     padding: 18,
     borderRadius: 8,
     alignItems: 'center',
@@ -156,10 +181,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 4, // Sombra en Android
+    elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#9a3412', // Naranja apagado si está cargando
+    backgroundColor: '#9a3412',
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -170,7 +195,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   errorBox: {
-    backgroundColor: '#7f1d1d', // Rojo oscuro para el contenedor
+    backgroundColor: '#7f1d1d',
     padding: 12,
     borderRadius: 8,
     marginBottom: 20,
