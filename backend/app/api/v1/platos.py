@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select
 from sqlalchemy.exc import SQLAlchemyError
 from app.models.plato import PlatoCreate, Plato, PlatoRead, PlatoUpdate
@@ -48,22 +48,26 @@ def crear_plato(
 
 @router.get("", response_model=list[PlatoRead])
 def obtener_platos(categoria_id: int | None = None,
+                   incluir_inactivos: bool = Query(default=False),
                    limit: int = 100,
                    current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.MESERO, RolesValidos.CAJA])),
                    db: Session = Depends(get_session)):
-    consulta_platos = (select(Plato)
-                       .where(Plato.restaurante_id == current_user.restaurante_id))
+    if incluir_inactivos and current_user.rol not in [RolesValidos.DUENO, RolesValidos.SUPERADMIN]:
+        raise HTTPException(status_code=403,
+                            detail="No tiene permisos para esta opcion")
 
+    condiciones = [Plato.restaurante_id == current_user.restaurante_id]
+    if not incluir_inactivos:
+        condiciones.append(Plato.activo == True)
     if categoria_id is not None:
-        consulta_platos = consulta_platos.where(Plato.categoria_id == categoria_id)
+        condiciones.append(Plato.categoria_id == categoria_id)
+    consulta = (select(Plato)
+                .where(*condiciones)
+                .order_by(Plato.nombre.asc())
+                .limit(limit))
+    platos_items = db.exec(consulta).all()
 
-    if current_user.rol != RolesValidos.DUENO:
-        consulta_platos = consulta_platos.where(Plato.activo == True)
-
-
-    platos_obj = db.exec(consulta_platos.order_by(Plato.nombre.asc()).limit(limit)).all()
-
-    return platos_obj
+    return platos_items
 
 @router.get("/{plato_id}", response_model=PlatoRead)
 def obtener_plato(plato_id: int,

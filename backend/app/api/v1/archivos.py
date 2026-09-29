@@ -1,4 +1,5 @@
 import cloudinary.uploader
+import mimetypes
 from enum import Enum
 from cloudinary.exceptions import Error as CloudinaryError
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends, Query
@@ -8,16 +9,21 @@ from app.models.usuario import RolesValidos
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
-MAX_FILE_SIZE = 5 * 1024 * 1024
+MAX_FILE_SIZE = 15 * 1024 * 1024
 
 class TipoRecurso(str, Enum):
     PLATOS = "platos"
     LOGOS = "logos"
+    COMPROBANTES = "comprobantes"
 
 @router.post("/file")
 def create_file(file: UploadFile = File(...),
                 tipo: TipoRecurso = Query(default=TipoRecurso.PLATOS),
-                current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO]))):
+                current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO, RolesValidos.CAJA]))):
+    tipo_contenido = file.content_type
+    if tipo_contenido == "application/octet-stream" or not tipo_contenido:
+        tipo_contenido, _ = mimetypes.guess_type(file.filename or "")
+
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

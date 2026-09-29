@@ -16,11 +16,12 @@ ROLES_PERMITIDOS_DUENO = {RolesValidos.MESERO,
 def registrar_usuario(usuario_in: UsuarioCreate,
                       db: Session = Depends(get_session),
                       current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO]))):
-    if usuario_in.rol not in ROLES_PERMITIDOS_DUENO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene autorización para asignar este rol."
-        )
+    if usuario_in.rol is not None:
+        if usuario_in.rol not in ROLES_PERMITIDOS_DUENO:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene autorización para asignar este rol."
+            )
 
     statement_correo = select(Usuario).where(Usuario.correo == usuario_in.correo)
     usuario_existente_correo = db.exec(statement_correo).first()
@@ -55,13 +56,13 @@ def registrar_usuario(usuario_in: UsuarioCreate,
         raise HTTPException(status_code=500, detail="Error interno al guardar en la base de datos")
 
 @router.get("", response_model=list[UsuarioRead])
-def obtener_usuarios(activo: bool | None = Query(default=None, description="Filtrar por estado activo/inactivo"),
+def obtener_usuarios(incluir_inactivos: bool = Query(default=False, description="Filtrar por estado activo/inactivo"),
                      db: Session = Depends(get_session),
                      current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO]))):
     consulta_usuarios = (select(Usuario)
                          .where(Usuario.restaurante_id == current_user.restaurante_id))
-    if activo is not None:
-        consulta_usuarios = consulta_usuarios.where(Usuario.activo == activo)
+    if not incluir_inactivos:
+        consulta_usuarios = consulta_usuarios.where(Usuario.activo == True)
 
     consulta_usuarios = consulta_usuarios.order_by(Usuario.nombres.asc())
     obj_usuarios = db.exec(consulta_usuarios).all()

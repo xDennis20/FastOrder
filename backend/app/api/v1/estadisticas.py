@@ -13,7 +13,7 @@ from app.api.deps import get_session
 from app.models.factura import Factura
 from app.models.pedido import Pedido
 from app.models.factura import TiposPagosValidos
-from models.pedido import DetallePedido
+from app.models.pedido import DetallePedido
 
 router = APIRouter(prefix="/admin/estadisticas", tags=["estadisticas"])
 

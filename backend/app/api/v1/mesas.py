@@ -267,15 +267,36 @@ def mesa_cambiar_estado(mesa_id: int,
         db.rollback()
         raise HTTPException(status_code=500, detail="Error interno al modificar el objeto en la base de datos")
 
+@router.patch("/{mesa_id}/activar", response_model=MesaRead)
+def reactivar_mesa(mesa_id: int,
+                   background_task: BackgroundTasks,
+                   current_user: TokenData = Depends(VerificarRol([RolesValidos.DUENO])),
+                   db: Session = Depends(get_session)):
+    mesa_obj = db.exec(select(Mesa).where(Mesa.restaurante_id == current_user.restaurante_id, Mesa.id == mesa_id)).first()
+    if not mesa_obj:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+
+    mesa_obj.activo = True
+    mesa_obj.estado = EstadosValidos.DISPONIBLE
+
+    db.add(mesa_obj)
+    db.commit()
+    db.refresh(mesa_obj)
+
+    mesa_dto = MesaRead.model_validate(mesa_obj)
+    evento = EventoMesaWS(evento=TipoEventoMesas.MESA_ACTUALIZADA, data=mesa_dto)
+    background_task.add_task(manager.broadcast, evento.model_dump(mode="json"), current_user.restaurante_id, CanalWS.MESAS)
+    return mesa_obj
+
 @router.get("/", response_model=list[MesaRead])
-def obtener_mesas(incluir_inactivas: bool = Query(default=False),
+def obtener_mesas(incluir_inactivos: bool = Query(default=False),
                   current_user: TokenData = Depends(VerificarRol([RolesValidos.SUPERADMIN,RolesValidos.DUENO, RolesValidos.MESERO, RolesValidos.CAJA])),
                   db: Session = Depends(get_session)):
-    if incluir_inactivas and current_user.rol not in [RolesValidos.DUENO, RolesValidos.SUPERADMIN]:
+    if incluir_inactivos and current_user.rol not in [RolesValidos.DUENO, RolesValidos.SUPERADMIN]:
         raise HTTPException(status_code=403,
                             detail="No tiene permisos para esta opcion")
     condiciones = [Mesa.restaurante_id == current_user.restaurante_id]
-    if not incluir_inactivas:
+    if not incluir_inactivos:
         condiciones.append(Mesa.activo == True)
     consulta = (select(Mesa)
                 .where(*condiciones)

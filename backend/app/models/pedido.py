@@ -83,7 +83,11 @@ class DetalleEstadoUpdate(SQLModel):
     estado: EstadosValidosDetalles
 
 class PedidoUpdate(SQLModel):
-    estado: Literal[EstadosValidosPedidos.CANCELADO, EstadosValidosPedidos.PAGADO] | None = None
+    estado: Literal[
+                EstadosValidosPedidos.SERVIDO,
+                EstadosValidosPedidos.CANCELADO,
+                EstadosValidosPedidos.PAGADO
+            ] | None = None
     mesa_id: int | None
     mesero_id: int | None
 
