@@ -10,6 +10,8 @@ import PedidosScreen from '../screens/PedidosScreen';
 import PerfilScreen from '../screens/PerfilScreen';
 import CobroScreen from '../screens/CobroScreen';
 import TomarPedidoScreen from '../screens/TomarPedidoScreen';
+import MesasScreen from '../screens/MesasScreen';
+import AdminScreen from '../screens/AdminScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -69,6 +71,16 @@ export default function AppNavigator() {
               name="TomarPedido"
               component={TomarPedidoScreen}
               options={{ title: 'Carta / Tomar Pedido' }}
+            />
+            <Stack.Screen
+              name="Mesas"
+              component={MesasScreen}
+              options={{ title: 'Plano de Mesas' }}
+            />
+            <Stack.Screen
+              name="Admin"
+              component={AdminScreen}
+              options={{ title: 'Panel de Administración' }}
             />
         </>
       )}

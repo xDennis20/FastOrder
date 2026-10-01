@@ -6,17 +6,22 @@ import {
   StyleSheet,
   FlatList,
   Alert,
-  Linking,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
-import { obtenerPedidosRequest, cambiarEstadoPlatoRequest } from '../services/api';
+import {
+  obtenerPedidosRequest,
+  cambiarEstadoPlatoRequest,
+  cambiarEstadoPedidoRequest,
+} from '../services/api';
 import {
   configurarNotificaciones,
   dispararNotificacionPedido,
 } from '../services/notificaciones';
 
+// Calcular tiempo transcurrido desde la creación del pedido
 function calcularTiempo(fechaIso) {
   if (!fechaIso) return '0 min';
   const creacion = new Date(fechaIso);
@@ -34,6 +39,10 @@ export default function PedidosScreen({ navigation }) {
   const [permisoNotificaciones, setPermisoNotificaciones] = useState(false);
   const [wsConectado, setWsConectado] = useState(false);
 
+  // Modal para cambiar estado de un plato individual
+  const [platoSeleccionado, setPlatoSeleccionado] = useState(null);
+  const [modalPlatoVisible, setModalPlatoVisible] = useState(false);
+
   const wsRef = useRef(null);
 
   // 1. Inicializar notificaciones
@@ -45,10 +54,11 @@ export default function PedidosScreen({ navigation }) {
     inicializar();
   }, []);
 
-  // 2. Cargar comandas iniciales por HTTP
+  // 2. Cargar comandas activas
   const cargarPedidos = async () => {
     try {
       const data = await obtenerPedidosRequest(token);
+      // Ocultamos solo los pedidos que ya fueron cobrados o cancelados
       const activos = data.filter(
         (p) => p.estado !== 'Pagado' && p.estado !== 'Cancelado'
       );
@@ -62,49 +72,39 @@ export default function PedidosScreen({ navigation }) {
   };
 
   useEffect(() => {
-    if (token) {
-      cargarPedidos();
-    }
+    if (token) cargarPedidos();
   }, [token]);
 
-  // 3. CONEXIÓN WEBSOCKET EN TIEMPO REAL 🚀
+  // 3. CONEXIÓN WEBSOCKET DE COCINA EN VIVO 🟢
   useEffect(() => {
     if (!token) return;
 
-    // Convertir http:// en ws://
     const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
     const wsUrl = apiUrl.replace(/^http/, 'ws') + `/ws/cocina?token=${token}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      console.log('✅ WebSocket de Cocina conectado');
-      setWsConectado(true);
-    };
+    ws.onopen = () => setWsConectado(true);
 
     ws.onmessage = async (event) => {
       try {
         const mensaje = JSON.parse(event.data);
-        console.log('⚡ Evento recibido por WebSocket:', mensaje.evento);
-
         const pedidoRecibido = mensaje.data;
         if (!pedidoRecibido) return;
 
         const nombreMesa = pedidoRecibido.mesa_id ? `Mesa #${pedidoRecibido.mesa_id}` : 'Para Llevar';
 
         if (mensaje.evento === 'PEDIDO_CREADO') {
-          // Agregar nuevo pedido arriba de la lista
+          // Agregar el nuevo pedido arriba de la lista
           setPedidos((prev) => [pedidoRecibido, ...prev]);
 
-          // Sonido y alerta nativa de comanda nueva
           await dispararNotificacionPedido({
             titulo: `🔔 ¡Nueva Comanda! - ${nombreMesa}`,
-            cuerpo: `Se ha recibido el pedido #${pedidoRecibido.id} con ${pedidoRecibido.detalles?.length || 0} plato(s).`,
+            cuerpo: `Se recibió orden #${pedidoRecibido.id} con ${pedidoRecibido.detalles?.length || 0} plato(s).`,
             datos: { pedidoId: pedidoRecibido.id },
           });
         } else if (mensaje.evento === 'PEDIDO_ACTUALIZADO' || mensaje.evento === 'PEDIDO_LISTO') {
-          // Actualizar pedido existente en la lista
           setPedidos((prev) =>
             prev.map((p) => (p.id === pedidoRecibido.id ? pedidoRecibido : p))
           );
@@ -113,71 +113,140 @@ export default function PedidosScreen({ navigation }) {
           setPedidos((prev) => prev.filter((p) => p.id !== pedidoRecibido.id));
         }
       } catch (err) {
-        console.warn('Error procesando mensaje de WebSocket:', err);
+        console.warn('Error en socket cocina:', err);
       }
     };
 
-    ws.onerror = (e) => {
-      console.warn('❌ Error en WebSocket:', e.message);
-      setWsConectado(false);
-    };
+    ws.onerror = () => setWsConectado(false);
+    ws.onclose = () => setWsConectado(false);
 
-    ws.onclose = () => {
-      console.log('🔌 WebSocket cerrado');
-      setWsConectado(false);
-    };
-
-    // Al salir de la pantalla, cerramos la conexión
     return () => {
       if (ws) ws.close();
     };
   }, [token]);
 
-  // Pull-to-refresh
   const alRefrescar = () => {
     setRefrescando(true);
     cargarPedidos();
   };
 
-  // 4. Cambiar estado de plato
-  const cambiarEstado = async (pedido) => {
-    const esListo = pedido.estado === 'Listo';
-    const nuevoEstado = esListo ? 'En preparacion' : 'Listo';
+  // Abrir modal de un plato individual
+  const abrirMenuPlato = (detalle) => {
+    setPlatoSeleccionado(detalle);
+    setModalPlatoVisible(true);
+  };
+
+  // Actualizar estado de un plato individual
+  const actualizarEstadoPlato = async (nuevoEstado) => {
+    if (!platoSeleccionado) return;
 
     try {
-      if (pedido.detalles && pedido.detalles.length > 0) {
-        for (const detalle of pedido.detalles) {
-          await cambiarEstadoPlatoRequest(detalle.id, nuevoEstado, token);
-        }
-      }
+      await cambiarEstadoPlatoRequest(platoSeleccionado.id, nuevoEstado, token);
 
+      // Actualizar localmente de inmediato
       setPedidos((prev) =>
-        prev.map((item) =>
-          item.id === pedido.id ? { ...item, estado: nuevoEstado } : item
-        )
+        prev.map((ped) => ({
+          ...ped,
+          detalles: ped.detalles.map((d) =>
+            d.id === platoSeleccionado.id ? { ...d, estado: nuevoEstado } : d
+          ),
+        }))
       );
 
-      if (nuevoEstado === 'Listo') {
-        const nombreMesa = pedido.mesa_id ? `Mesa #${pedido.mesa_id}` : 'Para Llevar';
-        await dispararNotificacionPedido({
-          titulo: `🍽️ ¡Plato Despachado! - ${nombreMesa}`,
-          cuerpo: `La orden #${pedido.id} está lista en barra para servicio.`,
-          datos: { pedidoId: pedido.id, mesa: nombreMesa },
-        });
-      }
+      setModalPlatoVisible(false);
     } catch (error) {
-      Alert.alert('Error', error.message || 'No se pudo actualizar la comanda');
+      Alert.alert('Error', error.message || 'No se pudo actualizar el plato');
+    }
+  };
+
+  // Despachar todos los platos de una orden con confirmación
+  const despacharTodaLaOrden = (pedido) => {
+    const nombreMesa = pedido.mesa_id ? `Mesa #${pedido.mesa_id}` : 'Para Llevar';
+
+    Alert.alert(
+      '¿Despachar toda la orden?',
+      `¿Confirmas que TODOS los platos de ${nombreMesa} (Orden #${pedido.id}) están listos para servicio?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: '✓ Sí, Despachar Todo',
+          onPress: async () => {
+            try {
+              if (pedido.detalles) {
+                for (const d of pedido.detalles) {
+                  if (d.estado !== 'Cancelado') {
+                    await cambiarEstadoPlatoRequest(d.id, 'Listo', token);
+                  }
+                }
+              }
+
+              setPedidos((prev) =>
+                prev.map((p) =>
+                  p.id === pedido.id
+                    ? {
+                        ...p,
+                        estado: 'Listo',
+                        detalles: p.detalles.map((d) =>
+                          d.estado !== 'Cancelado' ? { ...d, estado: 'Listo' } : d
+                        ),
+                      }
+                    : p
+                )
+              );
+
+              await dispararNotificacionPedido({
+                titulo: `🍽️ ¡Comanda Completa Lista! - ${nombreMesa}`,
+                cuerpo: `La orden #${pedido.id} está completa en barra lista para servir.`,
+                datos: { pedidoId: pedido.id },
+              });
+            } catch (error) {
+              Alert.alert('Error', error.message || 'No se pudo despachar la orden');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Marcar pedido completo como servido en la mesa del cliente
+  const marcarComoServido = async (pedido) => {
+    try {
+      await cambiarEstadoPedidoRequest(pedido.id, 'Servido', token);
+
+      setPedidos((prev) =>
+        prev.map((p) => (p.id === pedido.id ? { ...p, estado: 'Servido' } : p))
+      );
+
+      Alert.alert(
+        '🍽️ Pedido Servido',
+        `La orden #${pedido.id} ha sido entregada en la mesa del cliente.`
+      );
+    } catch (error) {
+      Alert.alert('Error', error.message || 'No se pudo marcar como servido');
     }
   };
 
   const renderItem = ({ item }) => {
-    const esListo = item.estado === 'Listo';
-    const borderColor = esListo ? '#22c55e' : '#ea580c';
+    const todosListos =
+      item.detalles &&
+      item.detalles.length > 0 &&
+      item.detalles.every((d) => d.estado === 'Listo' || d.estado === 'Cancelado');
+
+    const esServido = item.estado === 'Servido';
+    let borderColor = '#ea580c'; // Naranja en preparación
+
+    if (esServido) {
+      borderColor = '#3b82f6'; // Azul comiendo en mesa
+    } else if (todosListos) {
+      borderColor = '#22c55e'; // Verde listo en barra
+    }
+
     const nombreMesa = item.mesa_id ? `Mesa #${item.mesa_id}` : 'Para Llevar';
     const tiempo = calcularTiempo(item.fecha_creacion);
 
     return (
       <View style={[styles.ticketCard, { borderColor }]}>
+        {/* Cabecera */}
         <View style={styles.ticketHeader}>
           <View>
             <Text style={styles.ticketNumber}>ORDEN #{item.id}</Text>
@@ -190,60 +259,102 @@ export default function PedidosScreen({ navigation }) {
 
         <View style={styles.divider} />
 
+        {/* Lista de Platos individuales */}
         <View style={styles.itemsContainer}>
-          {item.detalles && item.detalles.length > 0 ? (
-            item.detalles.map((detalle, index) => (
-              <View key={detalle.id || index} style={styles.platoRow}>
+          {item.detalles?.map((detalle, index) => {
+            const esPlatoListo = detalle.estado === 'Listo';
+            const esPlatoCancelado = detalle.estado === 'Cancelado';
+            const esEnCoccion = detalle.estado === 'En preparacion';
+
+            return (
+              <TouchableOpacity
+                key={detalle.id || index}
+                style={[
+                  styles.platoRow,
+                  esPlatoListo && styles.platoFilaListo,
+                  esPlatoCancelado && styles.platoFilaCancelado,
+                ]}
+                onPress={() => abrirMenuPlato(detalle)}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.platoCantidad}>{detalle.cantidad}x</Text>
                 <View style={styles.platoDetalle}>
-                  <Text style={styles.platoNombre}>
+                  <Text
+                    style={[
+                      styles.platoNombre,
+                      esPlatoListo && styles.textoListo,
+                      esPlatoCancelado && styles.textoCancelado,
+                    ]}
+                  >
                     {detalle.plato?.nombre || `Plato #${detalle.plato_id}`}
                   </Text>
                   {detalle.notas ? (
                     <Text style={styles.platoNota}>• {detalle.notas}</Text>
                   ) : null}
                 </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.platoNota}>Sin detalles especificados</Text>
-          )}
+
+                {/* Badge de estado del plato */}
+                <View
+                  style={[
+                    styles.platoEstadoBadge,
+                    esPlatoListo && { backgroundColor: '#14532d' },
+                    esPlatoCancelado && { backgroundColor: '#7f1d1d' },
+                    esEnCoccion && { backgroundColor: '#713f12' },
+                  ]}
+                >
+                  <Text style={styles.platoEstadoTexto}>
+                    {esPlatoListo ? '✓ LISTO' : esPlatoCancelado ? '✕ CANC.' : '🍳 COCINAR'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        <TouchableOpacity
-          style={[styles.statusButton, esListo && styles.buttonListo]}
-          onPress={() => cambiarEstado(item)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.statusButtonText}>
-            {esListo ? '✓ PLATO DESPACHADO (LISTO)' : 'MARCAR COMO LISTO'}
-          </Text>
-        </TouchableOpacity>
+        {/* BOTONES DE ACCIÓN DEL TICKET */}
+        {todosListos && !esServido ? (
+          // 1. Si todos están listos: Botón azul para que el mesero entregue en mesa
+          <TouchableOpacity
+            style={[styles.statusButton, { backgroundColor: '#2563eb' }]}
+            onPress={() => marcarComoServido(item)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.statusButtonText}>🍽️ MARCAR COMO SERVIDO EN MESA</Text>
+          </TouchableOpacity>
+        ) : esServido ? (
+          // 2. Si ya está servido: Indicador informativo
+          <View style={[styles.statusButton, { backgroundColor: '#1e293b' }]}>
+            <Text style={[styles.statusButtonText, { color: '#94a3b8' }]}>
+              ✓ SERVIDO AL CLIENTE (EN MESA)
+            </Text>
+          </View>
+        ) : (
+          // 3. Si aún hay platos pendientes: Botón naranja para despachar toda la orden
+          <TouchableOpacity
+            style={styles.statusButton}
+            onPress={() => despacharTodaLaOrden(item)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.statusButtonText}>DESPACHAR TODA LA ORDEN →</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
+      {/* Cabecera */}
       <View style={styles.headerInfo}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Línea de Comandas Activas</Text>
-          {/* Indicador de conexión WebSocket */}
+          <Text style={styles.title}>Monitor KDS de Cocina</Text>
           <View style={styles.wsIndicator}>
             <View style={[styles.dot, wsConectado ? styles.dotGreen : styles.dotGray]} />
             <Text style={styles.wsText}>{wsConectado ? 'EN VIVO' : 'OFFLINE'}</Text>
           </View>
         </View>
-        <Text style={styles.subtitle}>Actualización automática por WebSockets</Text>
+        <Text style={styles.subtitle}>Toca un plato individual o despacha la comanda completa</Text>
       </View>
-
-      {!permisoNotificaciones && (
-        <View style={styles.bannerAviso}>
-          <Text style={styles.textoBanner}>
-            ⚠️ Notificaciones desactivadas. Las campanas de cocina no sonarán.
-          </Text>
-        </View>
-      )}
 
       {cargando ? (
         <View style={styles.centerLoading}>
@@ -267,13 +378,52 @@ export default function PedidosScreen({ navigation }) {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>🎉 No hay comandas pendientes</Text>
-              <Text style={styles.emptySubtext}>
-                Esperando nuevos pedidos en tiempo real...
-              </Text>
+              <Text style={styles.emptySubtext}>Cocina al día. Esperando pedidos...</Text>
             </View>
           }
         />
       )}
+
+      {/* MODAL PARA CAMBIAR ESTADO DE UN PLATO INDIVIDUAL */}
+      <Modal visible={modalPlatoVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitulo}>
+              {platoSeleccionado?.cantidad}x{' '}
+              {platoSeleccionado?.plato?.nombre || 'Plato Seleccionado'}
+            </Text>
+            <Text style={styles.modalSubtitulo}>Cambiar estado en cocina:</Text>
+
+            <TouchableOpacity
+              style={styles.btnModalListo}
+              onPress={() => actualizarEstadoPlato('Listo')}
+            >
+              <Text style={styles.btnModalTexto}>✓ Marcar como LISTO</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnModalCoccion}
+              onPress={() => actualizarEstadoPlato('En preparacion')}
+            >
+              <Text style={styles.btnModalTexto}>🍳 En Preparación / Cocción</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnModalCancelar}
+              onPress={() => actualizarEstadoPlato('Cancelado')}
+            >
+              <Text style={styles.btnModalTexto}>✕ Cancelar este Plato</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnModalCerrar}
+              onPress={() => setModalPlatoVisible(false)}
+            >
+              <Text style={styles.btnCerrarTexto}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -297,6 +447,11 @@ const styles = StyleSheet.create({
     color: '#fafaf9',
     fontSize: 20,
     fontWeight: '800',
+  },
+  subtitle: {
+    color: '#78716c',
+    fontSize: 12,
+    marginTop: 4,
   },
   wsIndicator: {
     flexDirection: 'row',
@@ -324,32 +479,10 @@ const styles = StyleSheet.create({
     color: '#a8a29e',
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    color: '#78716c',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  bannerAviso: {
-    backgroundColor: '#3b2914',
-    marginHorizontal: 20,
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d97706',
-  },
-  textoBanner: {
-    color: '#fbbf24',
-    fontSize: 12,
-    textAlign: 'center',
-    fontWeight: '600',
   },
   listContent: {
-    padding: 20,
+    padding: 16,
     paddingBottom: 40,
-    flexGrow: 1,
   },
   ticketCard: {
     backgroundColor: '#1c1917',
@@ -367,12 +500,11 @@ const styles = StyleSheet.create({
     color: '#ea580c',
     fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 0.5,
   },
   ticketMesa: {
     color: '#fafaf9',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     marginTop: 2,
   },
   timeBadge: {
@@ -396,37 +528,65 @@ const styles = StyleSheet.create({
   },
   platoRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    marginBottom: 4,
+    backgroundColor: '#24201d',
+  },
+  platoFilaListo: {
+    backgroundColor: '#14281c',
+  },
+  platoFilaCancelado: {
+    backgroundColor: '#2d1818',
+    opacity: 0.6,
   },
   platoCantidad: {
     color: '#ea580c',
     fontSize: 15,
     fontWeight: '800',
-    width: 28,
+    width: 30,
   },
   platoDetalle: {
     flex: 1,
   },
   platoNombre: {
     color: '#fafaf9',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  textoListo: {
+    color: '#4ade80',
+    fontWeight: '700',
+  },
+  textoCancelado: {
+    color: '#f87171',
+    textDecorationLine: 'line-through',
   },
   platoNota: {
     color: '#a8a29e',
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
     fontStyle: 'italic',
+    marginTop: 2,
+  },
+  platoEstadoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  platoEstadoTexto: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
   },
   statusButton: {
     backgroundColor: '#ea580c',
-    paddingVertical: 12,
+    paddingVertical: 13,
     borderRadius: 6,
     alignItems: 'center',
-  },
-  buttonListo: {
-    backgroundColor: '#15803d',
+    marginTop: 6,
   },
   statusButtonText: {
     color: '#ffffff',
@@ -442,13 +602,10 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#a8a29e',
     marginTop: 12,
-    fontSize: 14,
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingTop: 80,
+    alignItems: 'center',
   },
   emptyText: {
     color: '#fafaf9',
@@ -459,6 +616,67 @@ const styles = StyleSheet.create({
     color: '#78716c',
     fontSize: 13,
     marginTop: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1c1917',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#292524',
+  },
+  modalTitulo: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
     textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSubtitulo: {
+    color: '#a8a29e',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  btnModalListo: {
+    backgroundColor: '#15803d',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  btnModalCoccion: {
+    backgroundColor: '#d97706',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  btnModalCancelar: {
+    backgroundColor: '#b91c1c',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  btnModalTexto: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  btnModalCerrar: {
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  btnCerrarTexto: {
+    color: '#a8a29e',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

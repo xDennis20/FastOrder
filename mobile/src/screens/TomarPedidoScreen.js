@@ -17,7 +17,7 @@ import {
   crearPedidoRequest,
 } from '../services/api';
 
-export default function TomarPedidoScreen({ navigation }) {
+export default function TomarPedidoScreen({ navigation, route }) {
   const { token, usuario } = useContext(AuthContext);
 
   const [categorias, setCategorias] = useState([]);
@@ -47,8 +47,16 @@ export default function TomarPedidoScreen({ navigation }) {
         const mesasValidas = mesasData.filter(
           (m) => m.activo && m.estado !== 'fuera_de_servicio' && m.mesa_principal_id === null
         );
+
         setMesas(mesasValidas);
-        if (mesasValidas.length > 0) setMesaSeleccionada(mesasValidas[0]);
+        const mesaIdParam = route?.params?.mesaId;
+        if (mesaIdParam) {
+          const encontrada = mesasValidas.find((m) => m.id === mesaIdParam);
+          setMesaSeleccionada(encontrada || null);
+        } else {
+          // Si entra directo desde el menú, seleccionamos la primera mesa o Para Llevar
+          setMesaSeleccionada(mesasValidas[0] || null);
+        }
 
         // Aplanar todos los platos en una sola lista para el filtro "Todas"
         const platosTotales = [];
@@ -223,10 +231,21 @@ export default function TomarPedidoScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* 1. Selector de Mesas */}
+      {/* 1. Selector de Mesas con opción Para Llevar */}
       <View style={styles.seccionMesa}>
-        <Text style={styles.seccionTitulo}>MESA ASIGNADA:</Text>
+        <Text style={styles.seccionTitulo}>DESTINO DEL PEDIDO:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollMesas}>
+          {/* Opción Para Llevar (mesa_id = null) */}
+          <TouchableOpacity
+            style={[styles.chipMesa, mesaSeleccionada === null && styles.chipMesaActiva]}
+            onPress={() => setMesaSeleccionada(null)}
+          >
+            <Text style={[styles.textoChipMesa, mesaSeleccionada === null && styles.textoChipMesaActivo]}>
+              🛍️ Para Llevar
+            </Text>
+          </TouchableOpacity>
+
+          {/* Mesas del Salón */}
           {mesas.map((m) => {
             const activa = mesaSeleccionada?.id === m.id;
             return (

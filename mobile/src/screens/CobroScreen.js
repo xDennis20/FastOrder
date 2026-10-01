@@ -28,6 +28,9 @@ export default function CobroScreen({ route, navigation }) {
   const [cargandoPedidos, setCargandoPedidos] = useState(true);
   const [procesandoCobro, setProcesandoCobro] = useState(false);
 
+  // Método de pago: 'Efectivo' o 'Transferencia'
+  const [tipoPago, setTipoPago] = useState('Efectivo');
+
   // Hook nativo de cámara
   const [permission, requestPermission] = useCameraPermissions();
   const [camaraActiva, setCamaraActiva] = useState(false);
@@ -40,18 +43,20 @@ export default function CobroScreen({ route, navigation }) {
     async function cargarPedidosACobrar() {
       try {
         const data = await obtenerPedidosRequest(token);
-        // Filtrar solo pedidos activos que no estén cobrados ni cancelados
         const pendientes = data.filter(
           (p) => p.estado !== 'Pagado' && p.estado !== 'Cancelado'
         );
         setPedidosPendientes(pendientes);
 
-        // Si venía un pedido específico por navegación, lo seleccionamos
+        // Pre-selección inteligente por mesa o por ID
         if (route.params?.pedidoId) {
           const encontrado = pendientes.find((p) => p.id === route.params.pedidoId);
           if (encontrado) setPedidoSeleccionado(encontrado);
+        } else if (route.params?.mesaId) {
+          const encontradoPorMesa = pendientes.find((p) => p.mesa_id === route.params.mesaId);
+          if (encontradoPorMesa) setPedidoSeleccionado(encontradoPorMesa);
+          else if (pendientes.length > 0) setPedidoSeleccionado(pendientes[0]);
         } else if (pendientes.length > 0) {
-          // Por defecto seleccionamos el primero de la lista
           setPedidoSeleccionado(pendientes[0]);
         }
       } catch (error) {
@@ -104,7 +109,6 @@ export default function CobroScreen({ route, navigation }) {
     }
   };
 
-  // Tomar foto con compresión a 0.4 para que no supere 5MB
   const tomarFoto = async () => {
     if (cameraRef) {
       try {
@@ -117,7 +121,6 @@ export default function CobroScreen({ route, navigation }) {
     }
   };
 
-  // Selector de galería con compresión a 0.4
   const seleccionarDeGaleria = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -134,33 +137,38 @@ export default function CobroScreen({ route, navigation }) {
     }
   };
 
-  // 2. ENVIAR COBRO REAL A FASTAPI
+  // 2. ENVIAR COBRO REAL A FASTAPI 🚀
   const procesarCobro = async () => {
     if (!pedidoSeleccionado) {
       Alert.alert('Atención', 'No hay ningún pedido seleccionado para cobrar.');
       return;
     }
 
-    if (!fotoUri) {
+    // Si es transferencia, la foto es OBLIGATORIA
+    if (tipoPago === 'Transferencia' && !fotoUri) {
       Alert.alert(
         'Comprobante requerido',
-        'Es obligatorio adjuntar la fotografía del comprobante de transferencia bancaria.'
+        'Para pagos por Transferencia es obligatorio fotografiar o adjuntar el comprobante.'
       );
       return;
     }
 
     setProcesandoCobro(true);
     try {
-      // Paso A: Subir imagen a Cloudinary
-      const urlCloudinary = await subirFotoComprobanteRequest(fotoUri, token);
-      console.log('✅ URL de Cloudinary recibida:', urlCloudinary);
+      let urlCloudinary = null;
 
-      // Paso B: Facturar el pedido en FastAPI
+      // Solo subimos a Cloudinary si es Transferencia y hay foto
+      if (tipoPago === 'Transferencia' && fotoUri) {
+        urlCloudinary = await subirFotoComprobanteRequest(fotoUri, token);
+        console.log('✅ URL de Cloudinary recibida:', urlCloudinary);
+      }
+
+      // Facturar en FastAPI con "Efectivo" o "Transferencia"
       await facturarPedidoRequest(
         pedidoSeleccionado.id,
-        'Transferencia',
+        tipoPago,
         token,
-        urlCloudinary
+        urlCloudinary // null si es efectivo, https://... si es transferencia
       );
 
       const nombreMesa = pedidoSeleccionado.mesa_id
@@ -169,7 +177,7 @@ export default function CobroScreen({ route, navigation }) {
 
       Alert.alert(
         '🎉 Cobro Exitoso',
-        `El pedido #${pedidoSeleccionado.id} (${nombreMesa}) ha sido cobrado con su comprobante en Cloudinary y la mesa fue liberada.`,
+        `El pedido #${pedidoSeleccionado.id} (${nombreMesa}) ha sido cobrado en ${tipoPago.toUpperCase()} y la mesa fue liberada.`,
         [{ text: 'Aceptar', onPress: () => navigation.goBack() }]
       );
     } catch (error) {
@@ -205,7 +213,6 @@ export default function CobroScreen({ route, navigation }) {
     );
   }
 
-  // Pantalla de carga inicial
   if (cargandoPedidos) {
     return (
       <View style={styles.centerContainer}>
@@ -215,12 +222,18 @@ export default function CobroScreen({ route, navigation }) {
     );
   }
 
+  // Validación para habilitar el botón
+  const puedeCobrar =
+    pedidoSeleccionado &&
+    !procesandoCobro &&
+    (tipoPago === 'Efectivo' || (tipoPago === 'Transferencia' && fotoUri));
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.titulo}>Caja y Cierre de Comanda</Text>
 
       {/* 1. Selector de Comandas Pendientes */}
-      <Text style={styles.subtitulo}>SELECCIONA LA MESA A COBRAR</Text>
+      <Text style={styles.subtitulo}>SELECCIONA LA CUENTA A COBRAR</Text>
       {pedidosPendientes.length === 0 ? (
         <View style={styles.tarjetaVacia}>
           <Text style={styles.textoVacio}>No hay comandas pendientes de pago.</Text>
@@ -229,6 +242,7 @@ export default function CobroScreen({ route, navigation }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
           {pedidosPendientes.map((p) => {
             const seleccionada = pedidoSeleccionado?.id === p.id;
+            const esParaLlevar = !p.mesa_id;
             return (
               <TouchableOpacity
                 key={p.id}
@@ -236,9 +250,11 @@ export default function CobroScreen({ route, navigation }) {
                 onPress={() => setPedidoSeleccionado(p)}
               >
                 <Text style={[styles.chipTexto, seleccionada && styles.chipTextoActivo]}>
-                  {p.mesa_id ? `Mesa #${p.mesa_id}` : 'Para Llevar'}
+                  {esParaLlevar ? '🛍️ Para Llevar' : `Mesa #${p.mesa_id}`}
                 </Text>
-                <Text style={styles.chipSubtexto}>#{p.id} • ${Number(p.total || 0).toFixed(2)}</Text>
+                <Text style={styles.chipSubtexto}>
+                  #{p.id} • ${Number(p.total || 0).toFixed(2)}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -263,68 +279,104 @@ export default function CobroScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* 3. Sección de Comprobante de Transferencia */}
-      <Text style={styles.subtitulo}>COMPROBANTE DE PAGO (TRANSFERENCIA)</Text>
-
-      {mostrarRationale && (
-        <View style={styles.tarjetaRationale}>
-          <Text style={styles.tituloRationale}>¿Por qué requerimos la cámara?</Text>
-          <Text style={styles.cuerpoRationale}>
-            Necesitamos capturar el ticket digital de la transferencia bancaria para respaldar el cobro y liberar la mesa en caja.
+      {/* 3. Selector de Método de Pago: Efectivo vs Transferencia */}
+      <Text style={styles.subtitulo}>MÉTODO DE PAGO</Text>
+      <View style={styles.filaMetodosPago}>
+        <TouchableOpacity
+          style={[styles.btnMetodoPago, tipoPago === 'Efectivo' && styles.btnMetodoActivo]}
+          onPress={() => setTipoPago('Efectivo')}
+        >
+          <Text style={[styles.textoMetodoPago, tipoPago === 'Efectivo' && styles.textoMetodoActivo]}>
+            💵 Efectivo
           </Text>
-          <View style={styles.filaBotonesRationale}>
-            <TouchableOpacity
-              style={styles.botonRationaleCancelar}
-              onPress={() => setMostrarRationale(false)}
-            >
-              <Text style={styles.textoBotonSecundario}>Omitir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.botonRationaleAceptar}
-              onPress={confirmarRationale}
-            >
-              <Text style={styles.textoBotonPrimario}>Continuar</Text>
-            </TouchableOpacity>
-          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.btnMetodoPago, tipoPago === 'Transferencia' && styles.btnMetodoActivo]}
+          onPress={() => setTipoPago('Transferencia')}
+        >
+          <Text style={[styles.textoMetodoPago, tipoPago === 'Transferencia' && styles.textoMetodoActivo]}>
+            📱 Transferencia
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 4. Si es Efectivo: Mensaje simple sin cámara */}
+      {tipoPago === 'Efectivo' && (
+        <View style={styles.tarjetaEfectivo}>
+          <Text style={styles.textoEfectivoTitulo}>Cobro en Efectivo</Text>
+          <Text style={styles.textoEfectivoCuerpo}>
+            Recibe el dinero en caja y entrega el cambio si corresponde. No se requiere comprobante fotográfico.
+          </Text>
         </View>
       )}
 
-      {/* Foto tomada o botones para capturar */}
-      {fotoUri ? (
-        <View style={styles.seccionFoto}>
-          <Image source={{ uri: fotoUri }} style={styles.fotoPreview} resizeMode="contain" />
-          <TouchableOpacity
-            style={styles.botonReintentarFoto}
-            onPress={() => setFotoUri(null)}
-          >
-            <Text style={styles.textoEliminar}>Eliminar y tomar otra foto</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.contenedorAcciones}>
-          <TouchableOpacity style={styles.botonCamara} onPress={iniciarCaptura}>
-            <Text style={styles.textoBotonPrincipal}>📷 Fotografiar Comprobante</Text>
-          </TouchableOpacity>
+      {/* 5. Si es Transferencia: Sección de Cámara Obligatoria */}
+      {tipoPago === 'Transferencia' && (
+        <>
+          <Text style={styles.subtitulo}>COMPROBANTE BANCARIO (OBLIGATORIO)</Text>
 
-          <TouchableOpacity style={styles.botonGaleria} onPress={seleccionarDeGaleria}>
-            <Text style={styles.textoBotonGaleria}>🖼️ Subir desde Galería</Text>
-          </TouchableOpacity>
-        </View>
+          {mostrarRationale && (
+            <View style={styles.tarjetaRationale}>
+              <Text style={styles.tituloRationale}>¿Por qué requerimos la cámara?</Text>
+              <Text style={styles.cuerpoRationale}>
+                Para pagos con transferencia, es obligatorio capturar el ticket bancario para validar la transacción y liberar la comanda.
+              </Text>
+              <View style={styles.filaBotonesRationale}>
+                <TouchableOpacity
+                  style={styles.botonRationaleCancelar}
+                  onPress={() => setMostrarRationale(false)}
+                >
+                  <Text style={styles.textoBotonSecundario}>Omitir</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.botonRationaleAceptar}
+                  onPress={confirmarRationale}
+                >
+                  <Text style={styles.textoBotonPrimario}>Continuar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {fotoUri ? (
+            <View style={styles.seccionFoto}>
+              <Image source={{ uri: fotoUri }} style={styles.fotoPreview} resizeMode="contain" />
+              <TouchableOpacity
+                style={styles.botonReintentarFoto}
+                onPress={() => setFotoUri(null)}
+              >
+                <Text style={styles.textoEliminar}>Eliminar y tomar otra foto</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.contenedorAcciones}>
+              <TouchableOpacity style={styles.botonCamara} onPress={iniciarCaptura}>
+                <Text style={styles.textoBotonPrincipal}>📷 Fotografiar Comprobante</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.botonGaleria} onPress={seleccionarDeGaleria}>
+                <Text style={styles.textoBotonGaleria}>🖼️ Subir desde Galería</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
       )}
 
-      {/* 4. Botón de Facturación Final */}
+      {/* 6. Botón Finalizar Cobro */}
       <TouchableOpacity
-        style={[
-          styles.botonFinalizar,
-          (!fotoUri || !pedidoSeleccionado || procesandoCobro) && styles.botonDeshabilitado,
-        ]}
+        style={[styles.botonFinalizar, !puedeCobrar && styles.botonDeshabilitado]}
         onPress={procesarCobro}
-        disabled={!fotoUri || !pedidoSeleccionado || procesandoCobro}
+        disabled={!puedeCobrar}
       >
         {procesandoCobro ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.textoBotonFinalizar}>Facturar y Liberar Mesa</Text>
+          <Text style={styles.textoBotonFinalizar}>
+            {tipoPago === 'Efectivo'
+              ? `Cobrar $${Number(pedidoSeleccionado?.total || 0).toFixed(2)} en Efectivo`
+              : 'Facturar Transferencia y Liberar'}
+          </Text>
         )}
       </TouchableOpacity>
     </ScrollView>
@@ -356,12 +408,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitulo: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#a8a29e',
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 1,
     marginBottom: 10,
-    marginTop: 8,
+    marginTop: 12,
   },
   selectorScroll: {
     flexDirection: 'row',
@@ -408,7 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e1e1e',
     padding: 16,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#333',
   },
@@ -427,6 +479,51 @@ const styles = StyleSheet.create({
     color: '#78716c',
     fontSize: 12,
     marginTop: 4,
+  },
+  filaMetodosPago: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+  },
+  btnMetodoPago: {
+    flex: 1,
+    backgroundColor: '#1c1917',
+    borderWidth: 1.5,
+    borderColor: '#292524',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  btnMetodoActivo: {
+    borderColor: '#ea580c',
+    backgroundColor: '#27170c',
+  },
+  textoMetodoPago: {
+    color: '#a8a29e',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  textoMetodoActivo: {
+    color: '#ea580c',
+  },
+  tarjetaEfectivo: {
+    backgroundColor: '#14231b',
+    borderWidth: 1,
+    borderColor: '#15803d',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 16,
+  },
+  textoEfectivoTitulo: {
+    color: '#22c55e',
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  textoEfectivoCuerpo: {
+    color: '#86efac',
+    fontSize: 13,
+    lineHeight: 18,
   },
   tarjetaRationale: {
     backgroundColor: '#1c2833',
@@ -506,7 +603,7 @@ const styles = StyleSheet.create({
   },
   fotoPreview: {
     width: '100%',
-    height: 380,
+    height: 360,
     borderRadius: 12,
     backgroundColor: '#000',
     borderWidth: 1,
