@@ -130,8 +130,10 @@ export default function MesasScreen({ navigation }) {
 
   // Renderizado de cada mesa tipo Tarjeta KDS
   const renderMesa = ({ item }) => {
-    const esOcupada = item.estado === 'ocupada';
-    const esMantenimiento = item.estado === 'fuera_de_servicio';
+    const estado = String(item.estado || '').toUpperCase();
+    const esOcupada = estado === 'OCUPADA';
+    const esMantenimiento = estado === 'FUERA_DE_SERVICIO' || estado === 'MANTENIMIENTO';
+    const esReservada = estado === 'RESERVADA';
     const esSecundaria = item.mesa_principal_id !== null;
 
     let colorBorde = '#22c55e'; // Verde (disponible)
@@ -143,6 +145,9 @@ export default function MesasScreen({ navigation }) {
     } else if (esMantenimiento) {
       colorBorde = '#78716c'; // Gris (fuera de servicio)
       textoEstado = 'EN MANT.';
+    } else if (esReservada) {
+      colorBorde = '#f59e0b'; // Amarillo (reservada)
+      textoEstado = 'RESERVADA';
     }
 
     return (
@@ -175,6 +180,11 @@ export default function MesasScreen({ navigation }) {
       </View>
     );
   }
+
+  // Estado de la mesa seleccionada para el modal
+  const estadoMesaSel = String(mesaSeleccionada?.estado || '').toUpperCase();
+  const mesaEsOcupada = estadoMesaSel === 'OCUPADA';
+  const mesaEsMantenimiento = estadoMesaSel === 'FUERA_DE_SERVICIO' || estadoMesaSel === 'MANTENIMIENTO';
 
   return (
     <View style={styles.container}>
@@ -212,17 +222,26 @@ export default function MesasScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitulo}>
-              Mesa #{mesaSeleccionada?.numero_mesa} ({mesaSeleccionada?.estado?.toUpperCase()})
+              Mesa #{mesaSeleccionada?.numero_mesa} ({estadoMesaSel})
             </Text>
 
+            {/* Si está en mantenimiento, avisar */}
+            {mesaEsMantenimiento && (
+              <View style={styles.avisoMantenimiento}>
+                <Text style={styles.avisoMantenimientoTexto}>
+                  🛠️ Esta mesa está fuera de servicio.
+                </Text>
+              </View>
+            )}
+
             {/* Si está libre: Tomar Pedido enviando la mesa seleccionada */}
-            {mesaSeleccionada?.estado !== 'ocupada' && (
+            {!mesaEsOcupada && !mesaEsMantenimiento && (
               <TouchableOpacity
                 style={styles.modalBtnPrimario}
                 onPress={() => {
                   setModalVisible(false);
                   navigation.navigate('TomarPedido', {
-                    mesaId: mesaSeleccionada.id,        // <-- Le enviamos el ID
+                    mesaId: mesaSeleccionada.id,
                     numeroMesa: mesaSeleccionada.numero_mesa,
                   });
                 }}
@@ -232,13 +251,13 @@ export default function MesasScreen({ navigation }) {
             )}
 
             {/* Si está ocupada: Ir a cobrar enviando la mesa seleccionada */}
-            {mesaSeleccionada?.estado === 'ocupada' && (
+            {mesaEsOcupada && (
               <TouchableOpacity
                 style={styles.modalBtnCobrar}
                 onPress={() => {
                   setModalVisible(false);
                   navigation.navigate('Cobro', {
-                    mesaId: mesaSeleccionada.id,        // <-- Le enviamos el ID para cobrar directo
+                    mesaId: mesaSeleccionada.id,
                   });
                 }}
               >
@@ -246,8 +265,8 @@ export default function MesasScreen({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* Vincular a otra mesa (Solo si no es secundaria) */}
-            {mesaSeleccionada?.mesa_principal_id === null && (
+            {/* Vincular a otra mesa (Solo si no es secundaria y no está en mantenimiento) */}
+            {mesaSeleccionada?.mesa_principal_id === null && !mesaEsMantenimiento && (
               <TouchableOpacity
                 style={styles.modalBtnSecundario}
                 onPress={() => setModalVincularVisible(true)}
@@ -289,7 +308,7 @@ export default function MesasScreen({ navigation }) {
                   >
                     <Text style={styles.opcionVincularTexto}>Mesa #{m.numero_mesa}</Text>
                     <Text style={{ color: '#a8a29e', fontSize: 12 }}>
-                      ({m.estado.toUpperCase()})
+                      ({String(m.estado).toUpperCase()})
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -433,6 +452,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 18,
     textAlign: 'center',
+  },
+  avisoMantenimiento: {
+    backgroundColor: 'rgba(120, 113, 108, 0.2)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  avisoMantenimientoTexto: {
+    color: '#a8a29e',
+    fontWeight: '700',
+    fontSize: 13,
   },
   modalBtnPrimario: {
     backgroundColor: '#ea580c',
