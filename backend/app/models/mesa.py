@@ -8,10 +8,10 @@ if TYPE_CHECKING:
     from app.models.restaurante import Restaurante
 
 class EstadosValidos(str,Enum):
-    DISPONIBLE = "disponible"
-    OCUPADA = "ocupada"
-    RESERVADA = "reservada"
-    MANTENIMIENTO = "fuera_de_servicio"
+    DISPONIBLE = "DISPONIBLE"
+    OCUPADA = "OCUPADA"
+    RESERVADA = "RESERVADA"
+    MANTENIMIENTO = "FUERA_DE_SERVICIO"
 
 class Mesa(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, index=True)
