@@ -1,6 +1,5 @@
 from app.models.categoria import Categoria
-from app.core.database import get_session
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 from sqlmodel import Session, select
 
 
