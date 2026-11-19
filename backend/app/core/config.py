@@ -3,5 +3,6 @@ from dotenv import load_dotenv
 
 load_dotenv("./.env")
 
-#Variable de entorno de database
+# Variable de entorno de database
 DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL_TEST = os.getenv("DATABASE_URL_TEST")

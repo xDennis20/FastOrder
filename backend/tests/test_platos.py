@@ -1,9 +1,10 @@
 from httpx import Response
 from app.models.categoria import Categoria
+from app.models.plato import TamanoPlato
 
 def payload_plato(nombre: str = "Salchipapa",
                      precio: float = 2.00,
-                     tamano: str = "NORMAL",
+                     tamano: TamanoPlato = TamanoPlato.NORMAL,
                      activo: bool = True,
                      descripcion: str = "string",
                      img_url: str = "string",

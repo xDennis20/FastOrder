@@ -7,13 +7,13 @@ from app.api.v1.auth.schemas import TokenData
 from app.models.restaurante import Restaurante
 from app.models.categoria import Categoria
 from app.models.plato import Plato, TamanoPlato
+from app.models.usuario import RolesValidos
 from app.api.deps import get_current_user
 from app.api.deps import get_session
-from app.models.usuario import RolesValidos
+from app.core.config import DATABASE_URL_TEST
+from app.api.v1.categorias import CACHE_CATEGORIAS
 
-
-database_url = "postgresql://desplet:020620d@localhost:5434/fastorder_test"
-engine_test = create_engine(database_url, echo=True)
+engine_test = create_engine(DATABASE_URL_TEST, echo=False)
 SQLModel.metadata.create_all(engine_test)
 
 RESTAURANTE_TEST_ID = 1
@@ -59,10 +59,13 @@ def db_test(session_test):
     session_test.exec(text("TRUNCATE TABLE plato, categoria, restaurante RESTART IDENTITY CASCADE;"))
     session_test.commit()
 
+@pytest.fixture(autouse=True)
+def limpiar_cache():
+    CACHE_CATEGORIAS.clear()
+
 @pytest.fixture
 def restaurante_test(session_test):
     obj_restaurante = Restaurante(nombre=f"restaurante_{RESTAURANTE_TEST_ID}_test",
-                                  id=RESTAURANTE_TEST_ID,
                                   ruc="0034234256"
                                   )
 
