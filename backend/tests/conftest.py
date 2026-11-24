@@ -105,3 +105,20 @@ def plato_test(session_test,  restaurante_test, categoria_test):
     session_test.refresh(obj_plato)
 
     yield obj_plato
+
+@pytest.fixture
+def plato_test_inactivo(session_test, restaurante_test, categoria_test):
+    obj_plato = Plato(nombre="Guatita",
+                      precio=2.00,
+                      tamano=TamanoPlato.NORMAL,
+                      activo=False,
+                      descripcion="string",
+                      img_url="string",
+                      categoria_id=categoria_test.id,
+                      restaurante_id=restaurante_test.id)
+
+    session_test.add(obj_plato)
+    session_test.commit()
+    session_test.refresh(obj_plato)
+
+    yield obj_plato
