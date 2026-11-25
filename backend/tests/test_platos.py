@@ -350,6 +350,7 @@ def test_obtener_platos_otro_restaurante(client_dueno, plato_test, session_test)
     # Act:
     response: Response = client_dueno.get(url="/platos")
 
+    # Assert:
     assert response.status_code == 200
 
     data = response.json()
