@@ -359,3 +359,39 @@ def test_obtener_platos_otro_restaurante(client_dueno, plato_test, session_test)
     assert data[0]["id"] == plato_test.id
     assert data[0]["restaurante_id"] == plato_test.restaurante_id
     assert data[0]["categoria_id"] == plato_test.categoria_id
+
+def test_eliminar_plato(client_dueno, plato_test, session_test):
+    # Act:
+    response: Response = client_dueno.delete(url=f"/platos/{plato_test.id}")
+
+    # Assert:
+    assert response.status_code == 200
+    assert response.json()["message"] == "Plato eliminado correctamente"
+
+    session_test.refresh(plato_test)
+
+    assert plato_test.activo is False
+
+def test_eliminar_plato_rol_mesero(client_mesero):
+    # Act:
+    response: Response = client_mesero.delete(url="/platos/1")
+
+    # Assert:
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Permisos insuficientes"
+
+def test_eliminar_plato_inexistente(client_dueno):
+    # Act:
+    response: Response = client_dueno.delete(url="/platos/99")
+
+    # Assert:
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Plato no encontrado"
+
+def test_eliminar_plato_desactivado(client_dueno, plato_test_inactivo):
+    # Act:
+    response: Response = client_dueno.delete(url=f"/platos/{plato_test_inactivo.id}")
+
+    # Assert:
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Plato ya desactivado"
